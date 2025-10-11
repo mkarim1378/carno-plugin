@@ -4,7 +4,7 @@
 Plugin Name:  Carno Customization Plugin
 Plugin URI:   https://sepehralimohammadi.com/
 Description:  این افزونه جهت اعمال شخصی سازی های مورد نیاز بر روی وبسایت مهندس سپهر علیمحمدی توسعه داده شده است. لطفا از غیرفعال کردن این افزونه خودداری فرمایید!
-Version:      1.13.9
+Version:      1.14.0
 Author:       سپهر علیمحمدی
 Author URI:   https://sepehralimohammadi.com/
 */
@@ -1349,5 +1349,29 @@ function auto_complete_all_orders( $order_id ) {
 
     if ( $order->has_status( 'processing' ) ) {
         $order->update_status( 'completed' );
+    }
+}
+
+// ============================================================================
+// تخفیف پکیج زبان فنی
+add_action( 'woocommerce_cart_calculate_fees', 'custom_package_discount', 20, 1 );
+function custom_package_discount( $cart ) {
+    if ( is_admin() && ! defined( 'DOING_AJAX' ) ) return;
+
+    // آیدی محصولات مورد نظر
+    $required_products = array( 16180, 13534 );
+    $found_products = array();
+
+    // بررسی محصولات داخل سبد خرید
+    foreach ( $cart->get_cart() as $cart_item ) {
+        if ( in_array( $cart_item['product_id'], $required_products ) ) {
+            $found_products[] = $cart_item['product_id'];
+        }
+    }
+
+    // اگر هر دو محصول توی سبد باشن، تخفیف اعمال بشه
+    if ( count( array_unique($found_products) ) === count($required_products) ) {
+        $discount_amount = 1320000; // مبلغ تخفیف به تومان
+        $cart->add_fee( 'تخفیف پکیج زبان فنی', -$discount_amount );
     }
 }
