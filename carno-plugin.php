@@ -4,10 +4,126 @@
 Plugin Name:  Carno Customization Plugin
 Plugin URI:   https://sepehralimohammadi.com/
 Description:  این افزونه جهت اعمال شخصی سازی های مورد نیاز بر روی وبسایت مهندس سپهر علیمحمدی توسعه داده شده است. لطفا از غیرفعال کردن این افزونه خودداری فرمایید!
-Version:      1.14.0
+Version:      1.15.0
 Author:       سپهر علیمحمدی
 Author URI:   https://sepehralimohammadi.com/
 */
+
+// Read time shortcode for WordPress
+// Usage: [read_time] or [read_time wpm="220" label="%s دقیقه" icon="1"]
+
+if ( ! function_exists( 'kar_read_time_shortcode' ) ) {
+
+    function kar_read_time_shortcode( $atts ) {
+        // Default attributes
+        $atts = shortcode_atts( array(
+            'wpm'   => 220,
+            'label' => '%s دقیقه',
+            'class' => 'read-time',
+            'icon'  => '1',
+            'min'   => 1,
+        ), $atts, 'read_time' );
+
+        // Ensure we have global post
+        global $post;
+        if ( empty( $post ) || ! isset( $post->ID ) ) {
+            return '';
+        }
+        $post_id = (int) $post->ID;
+
+        // 1) Manual override via custom field 'read_time_manual'
+        $manual = get_post_meta( $post_id, 'read_time_manual', true );
+        if ( $manual !== '' && is_numeric( $manual ) ) {
+            $minutes = (int) $manual;
+        } else {
+            // 2) Cache keys
+            $cache_key_time  = '_kar_read_time_cached_time';
+            $cache_key_value = '_kar_read_time_cached_value';
+            $cached_time     = get_post_meta( $post_id, $cache_key_time, true );
+            $cached_value    = get_post_meta( $post_id, $cache_key_value, true );
+            $post_mod_time   = get_post_field( 'post_modified_gmt', $post_id );
+
+            if ( $cached_value !== '' && $cached_time === $post_mod_time ) {
+                $minutes = (int) $cached_value;
+            } else {
+                // 3) Calculate word count safely
+                $content = isset( $post->post_content ) ? $post->post_content : '';
+                $content = strip_shortcodes( $content );
+                $content = wp_strip_all_tags( $content );
+                $content = trim( preg_replace( '/\s+/u', ' ', $content ) );
+
+                if ( $content === '' ) {
+                    $word_count = 0;
+                } else {
+                    // split into words. use preg_split which is robust for multibyte
+                    $words = preg_split( '/\s+/u', $content );
+                    if ( is_array( $words ) ) {
+                        // filter out empty strings using 'strlen' to avoid closures (compatibility)
+                        $filtered = array_filter( $words, 'strlen' );
+                        $word_count = count( $filtered );
+                    } else {
+                        $word_count = 0;
+                    }
+                }
+
+                $wpm = intval( $atts['wpm'] );
+                if ( $wpm <= 0 ) {
+                    $wpm = 220;
+                } elseif ( $wpm < 50 ) {
+                    $wpm = 50; // safeguard
+                }
+
+                $minutes = (int) ceil( $word_count / $wpm );
+                if ( $minutes < intval( $atts['min'] ) ) {
+                    $minutes = intval( $atts['min'] );
+                }
+
+                // store cache
+                update_post_meta( $post_id, $cache_key_value, $minutes );
+                update_post_meta( $post_id, $cache_key_time, $post_mod_time );
+            }
+        }
+
+        // Prepare label text
+        if ( intval( $minutes ) === 0 ) {
+            $label_text = 'کمتر از یک دقیقه';
+        } else {
+            // Use number_format_i18n if available
+            if ( function_exists( 'number_format_i18n' ) ) {
+                $num = number_format_i18n( $minutes );
+            } else {
+                $num = $minutes;
+            }
+            $label_text = sprintf( $atts['label'], $num );
+        }
+
+        // Icon HTML (inline SVG)
+        $icon_html = '';
+        if ( intval( $atts['icon'] ) ) {
+            $icon_html = '<span class="read-time-icon" aria-hidden="true" style="display:inline-flex;align-items:center;margin-inline-end:6px;">'
+                       . '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" focusable="false" role="img">'
+                       . '<path d="M12 7V12L15 14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'
+                       . '<path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>'
+                       . '</svg></span>';
+        }
+
+        $aria_label = esc_attr( "زمان تقریبی مطالعه: {$minutes} دقیقه" );
+
+        $html = sprintf(
+            '<span class="%s" role="text" aria-label="%s" title="%s">%s<span class="read-time-text">%s</span></span>',
+            esc_attr( $atts['class'] ),
+            $aria_label,
+            esc_attr( $label_text ),
+            $icon_html,
+            esc_html( $label_text )
+        );
+
+        return $html;
+    }
+
+    add_shortcode( 'read_time', 'kar_read_time_shortcode' );
+}
+
 
 // جداسازی قیمت متغیر محصولات
 add_shortcode( 'variation_price_by_attr', function( $atts ) {
@@ -100,7 +216,18 @@ function carno_apply_fixed_discount_for_specific_product( $cart ) {
         ],
     ];
 
-    foreach ( $cart->get_cart() as $cart_item ) {
+    // بهینه‌سازی: بررسی فقط یک بار و ذخیره نتیجه
+    $cart_items = $cart->get_cart();
+    $existing_fees = $cart->get_fees();
+    $existing_fee_names = array();
+    
+    foreach ($existing_fees as $fee) {
+        if (isset($fee->name)) {
+            $existing_fee_names[] = $fee->name;
+        }
+    }
+
+    foreach ( $cart_items as $cart_item ) {
         $product_id = isset( $cart_item['variation_id'] ) && $cart_item['variation_id'] > 0
             ? (int) $cart_item['variation_id']
             : (int) $cart_item['product_id'];
@@ -108,19 +235,13 @@ function carno_apply_fixed_discount_for_specific_product( $cart ) {
         if ( array_key_exists( $product_id, $discounts ) ) {
             $fee_label = $discounts[$product_id]['label'];
 
-            $already_added = false;
-            foreach ( $cart->get_fees() as $fee ) {
-                if ( isset( $fee->name ) && $fee->name === $fee_label ) {
-                    $already_added = true;
-                    break;
-                }
-            }
-
-            if ( ! $already_added ) {
+            // بررسی سریع‌تر با استفاده از آرایه
+            if ( ! in_array( $fee_label, $existing_fee_names ) ) {
                 $cart->add_fee(
                     __( $fee_label, 'carno' ),
                     -1 * (float) $discounts[$product_id]['amount']
                 );
+                $existing_fee_names[] = $fee_label; // اضافه کردن به لیست برای جلوگیری از تکرار
             }
         }
     }
@@ -137,12 +258,21 @@ function user_exists_by_phone($phone) {
         return false;
     }
 
+    // کش کردن نتیجه جستجو
+    $cache_key = 'user_phone_' . md5($normalized_phone);
+    $cached_user_id = get_transient($cache_key);
+    
+    if ($cached_user_id !== false) {
+        return $cached_user_id;
+    }
+
     // چک روی username
     $user = get_user_by('login', '0' . $normalized_phone);
     if (!$user) {
         $user = get_user_by('login', $normalized_phone);
     }
     if ($user) {
+        set_transient($cache_key, $user->ID, 1800); // کش برای 30 دقیقه
         return $user->ID;
     }
 
@@ -152,13 +282,17 @@ function user_exists_by_phone($phone) {
             'relation' => 'OR',
             ['key' => 'billing_phone', 'value' => $normalized_phone, 'compare' => 'LIKE'],
             ['key' => 'digits_phone_no', 'value' => $normalized_phone, 'compare' => 'LIKE'],
-        ]
+        ],
+        'number' => 1 // محدود کردن به یک نتیجه
     ]);
 
     if (!empty($user_query->results)) {
-        return $user_query->results[0]->ID;
+        $user_id = $user_query->results[0]->ID;
+        set_transient($cache_key, $user_id, 1800); // کش برای 30 دقیقه
+        return $user_id;
     }
 
+    set_transient($cache_key, false, 1800); // کش نتیجه منفی
     return false;
 }
 
@@ -282,21 +416,35 @@ function display_elementor_template_before_order_details_table( $order ) {
 add_filter( 'gform_pre_render_21', 'populate_products_checkbox' );
 function populate_products_checkbox( $form ) {
     $user_id = get_current_user_id();
-    if ( $user_id ) {
+    if ( !$user_id ) {
+        return $form;
+    }
+    
+    // کش کردن محصولات خریداری شده
+    $cache_key = 'user_products_' . $user_id;
+    $purchased_products = get_transient($cache_key);
+    
+    if ($purchased_products === false) {
         $field_id = 8;
         foreach ( $form['fields'] as &$field ) {
             if ( $field->id == $field_id ) {
+                // بهینه‌سازی کوئری با محدود کردن تعداد نتایج
                 $customer_orders = get_posts( array(
-                    'numberposts' => -1,
+                    'numberposts' => 50, // محدود کردن به 50 سفارش آخر
                     'meta_key'    => '_customer_user',
                     'meta_value'  => $user_id,
                     'post_type'   => wc_get_order_types(),
-                    'post_status' => 'wc-completed', // You can change this to 'any' for all orders
+                    'post_status' => 'wc-completed',
+                    'orderby'     => 'date',
+                    'order'       => 'DESC'
                 ) );
+                
                 $purchased_products = array();
                 foreach ( $customer_orders as $order ) {
-                    $order = wc_get_order( $order->ID );
-                    $items = $order->get_items();
+                    $order_obj = wc_get_order( $order->ID );
+                    if (!$order_obj) continue;
+                    
+                    $items = $order_obj->get_items();
                     foreach ( $items as $item ) {
                         $product = $item->get_product();
                         if ( $product ) {
@@ -304,6 +452,18 @@ function populate_products_checkbox( $form ) {
                         }
                     }
                 }
+                
+                // کش کردن برای 1 ساعت
+                set_transient($cache_key, $purchased_products, 3600);
+                break;
+            }
+        }
+    }
+    
+    if (!empty($purchased_products)) {
+        $field_id = 8;
+        foreach ( $form['fields'] as &$field ) {
+            if ( $field->id == $field_id ) {
                 $choices = array();
                 foreach ( $purchased_products as $product_id => $product_name ) {
                     $choices[] = array(
@@ -312,34 +472,52 @@ function populate_products_checkbox( $form ) {
                     );
                 }
                 $field->choices = $choices;
+                break;
             }
         }
     }
+    
     return $form;
 }
 // ==========================================================================
+// بارگذاری اسکریپت‌های آنالیتیکس به صورت بهینه
 add_action('wp_head', function() {
-    ?>
-    <script>
-        (function (t, e, n) {
-            t.yektanetAnalyticsObject = n;
-            t[n] = t[n] || function () {
-                t[n].q.push(arguments);
-            };
-            t[n].q = t[n].q || [];
-            var a = new Date(),
-                r = a.getFullYear().toString() + "0" + a.getMonth() + "0" + a.getDate() + "0" + a.getHours(),
-                c = e.getElementsByTagName("script")[0],
-                s = e.createElement("script");
-            s.id = "ua-script-oJRDjt94";
-            s.dataset.analyticsobject = n;
-            s.async = true;
-            s.type = "text/javascript";
-            s.src = "https://cdn.yektanet.com/rg_woebegone/scripts_v3/oJRDjt94/rg.complete.js?v=" + r;
-            c.parentNode.insertBefore(s, c);
-        })(window, document, "yektanet");
-    </script>
-    <?php
+    // فقط در صفحات مهم و نه در صفحات ادمین
+    if (!is_admin() && (is_front_page() || is_product() || is_shop() || is_cart() || is_checkout() || is_page())) {
+        ?>
+        <!-- Microsoft Clarity -->
+        <script type="text/javascript">
+            (function(c,l,a,r,i,t,y){
+                c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+                t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+                y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+            })(window, document, "clarity", "script", "oa9a86dfw7");
+        </script>
+        
+        <!-- Yektanet Analytics (فقط در صفحات تجاری) -->
+        <?php if (is_front_page() || is_product() || is_shop() || is_cart() || is_checkout()): ?>
+        <script>
+            (function (t, e, n) {
+                t.yektanetAnalyticsObject = n;
+                t[n] = t[n] || function () {
+                    t[n].q.push(arguments);
+                };
+                t[n].q = t[n].q || [];
+                var a = new Date(),
+                    r = a.getFullYear().toString() + "0" + a.getMonth() + "0" + a.getDate() + "0" + a.getHours(),
+                    c = e.getElementsByTagName("script")[0],
+                    s = e.createElement("script");
+                s.id = "ua-script-oJRDjt94";
+                s.dataset.analyticsobject = n;
+                s.async = true;
+                s.type = "text/javascript";
+                s.src = "https://cdn.yektanet.com/rg_woebegone/scripts_v3/oJRDjt94/rg.complete.js?v=" + r;
+                c.parentNode.insertBefore(s, c);
+            })(window, document, "yektanet");
+        </script>
+        <?php endif; ?>
+        <?php
+    }
 });
 
 
@@ -460,104 +638,6 @@ add_action('woocommerce_new_product', 'nias_save_original_stock');
 
 
 //=============================================================================
-
-
-add_action('template_redirect', 'km_protect_course_content_page');
-function km_protect_course_content_page() {
-    $course_content_slug = 'tamirkare-milyarder/contents';
-    if (is_page($course_content_slug)) {
-        if (!is_user_logged_in()) {
-            wp_redirect(home_url('/auth/'));
-            exit;
-        }
-        $user_id = get_current_user_id();
-        $course_product_ids = [33429, 33496, 33497];
-        $has_purchased = false;
-        foreach ($course_product_ids as $product_id) {
-            if (wc_customer_bought_product('', $user_id, $product_id)) {
-                $has_purchased = true;
-                break;
-            }
-        }
-        if (!$has_purchased) {
-            wp_redirect(home_url('/tamirkare-milyarder/'));
-            exit;
-        }
-    }
-}
-
-function redirect_to_course_contents_after_purchase($order_id) {
-    if (!$order_id) {
-        return;
-    }
-
-    $order = wc_get_order($order_id);
-    if (!$order) {
-        return;
-    }
-
-    if (!$order->has_status(['processing', 'completed'])) {
-        return;
-    }
-
-    $allowed_product_ids = [33429, 33496, 33497];
-
-    foreach ($order->get_items() as $item) {
-        if (in_array($item->get_product_id(), $allowed_product_ids)) {
-            wp_safe_redirect(home_url('/tamirkare-milyarder/contents/'));
-            exit;
-        }
-    }
-}
-
-add_action('woocommerce_thankyou', 'redirect_to_course_contents_after_purchase');
-add_action('woocommerce_order_status_completed', 'redirect_to_course_contents_after_purchase');
-
-add_filter('woocommerce_my_account_my_orders_actions', 'custom_change_view_order_link', 10, 2);
-function custom_change_view_order_link($actions, $order) {
-    $course_product_ids = [33429, 33496, 33497];
-    foreach ($order->get_items() as $item) {
-        if (in_array($item->get_product_id(), $course_product_ids)) {
-            if (isset($actions['view'])) {
-                $actions['view']['url'] = home_url('/tamirkare-milyarder/contents/');
-            }
-            break;
-        }
-    }
-    return $actions;
-}
-
-add_action('wp_footer', 'change_static_course_button_if_bought');
-function change_static_course_button_if_bought() {
-    if (!is_page('tamirkare-milyarder')) return;
-    $product_ids = [33429, 33496, 33497];
-    $content_url = home_url('/tamirkare-milyarder/contents/');
-    if (!is_user_logged_in()) return;
-    $user_id = get_current_user_id();
-    $has_bought = false;
-    foreach ($product_ids as $product_id) {
-        if (wc_customer_bought_product('', $user_id, $product_id)) {
-            $has_bought = true;
-            break;
-        }
-    }
-    if ($has_bought) {
-        ?>
-        <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            const buttons = document.querySelectorAll('.cta-buy-two a');
-            buttons.forEach(function(btn) {
-                btn.textContent = 'مشاهده دوره';
-                btn.setAttribute('href', '<?php echo esc_url($content_url); ?>');
-            });
-        });
-        </script>
-        <?php
-    }
-}
-
-
-// =============================================================================================================
 // اتصال سفارشات مهمان به حساب کاربری بعد از لاگین
 function connect_guest_orders_by_phone_to_user_account($user_id) {
     // 1. اطمینان از معتبر بودن شناسه کاربر
@@ -650,14 +730,32 @@ function mk_merged_comments_shortcode( $atts ) {
 
     ob_start();
 
-    // ✅ ایجاد Walker اختصاصی برای حذف لینک تاریخ
+    // ✅ Walker اختصاصی برای حذف لینک‌ها و ریپلای
     class No_Link_Comment_Walker extends Walker_Comment {
-        protected function comment_date( $comment ) {
-            echo '<span class="comment-date">' . get_comment_date( '', $comment ) . '</span>';
+        protected function comment( $comment, $depth, $args ) {
+            $tag = ( 'div' === $args['style'] ) ? 'div' : 'li';
+            ?>
+            <<?php echo $tag; ?> id="comment-<?php comment_ID(); ?>" <?php comment_class( $this->has_children ? 'parent' : '', $comment ); ?>>
+                <article id="div-comment-<?php comment_ID(); ?>" class="comment-body">
+                    <footer class="comment-meta">
+                        <div class="comment-author vcard">
+                            <?php echo get_avatar( $comment, 48 ); ?>
+                            <b class="fn"><?php echo esc_html( get_comment_author( $comment ) ); ?></b>
+                        </div>
+                        <div class="comment-metadata">
+                            <span class="comment-date"><?php echo get_comment_date( '', $comment ); ?></span>
+                        </div>
+                    </footer>
+
+                    <div class="comment-content">
+                        <?php comment_text(); ?>
+                    </div>
+                </article>
+            <?php
         }
 
         protected function comment_reply_link( $comment, $depth, $args ) {
-            // اگر ریپلای هم نمی‌خوای نمایش داده شه، این بخش خالی می‌مونه
+            // ❌ حذف لینک ریپلای
         }
     }
 
@@ -666,7 +764,8 @@ function mk_merged_comments_shortcode( $atts ) {
         wp_list_comments( [
             'echo'   => true,
             'per_page' => 0,
-            'walker' => new No_Link_Comment_Walker(), // ✅ استفاده از Walker جدید
+            'walker' => new No_Link_Comment_Walker(), // ✅ استفاده از Walker بدون لینک
+            'style' => 'ul',
         ], $comments );
         echo '</div>';
     } else {
@@ -788,26 +887,33 @@ add_filter( 'auto_update_translation', '__return_false' );
 add_filter( 'async_update_translation', '__return_false' );
 
 // =============================================================================================================
-// تغییر فیلدهای صورتحساب در صورت وجود یا عدم وجود محصول فیزیکی
+// تغییر فیلدهای صورتحساب - پیش‌فرض: فقط نام و موبایل، در صورت وجود محصول 13534: آدرس و کد پستی اضافه می‌شود
 
 function customize_checkout_fields($fields) {
-    $has_physical_products = false;
-
-    // بررسی محصولات موجود در سبد خرید
-    foreach (WC()->cart->get_cart() as $cart_item) {
-        $product = $cart_item['data'];
-        if (!$product->is_virtual()) {
-            $has_physical_products = true;
-            break;
+    // بررسی وجود محصول با آیدی 13534 در سبد خرید
+    $has_product_13534 = false;
+    if (WC()->cart && !WC()->cart->is_empty()) {
+        foreach (WC()->cart->get_cart() as $cart_item) {
+            if (isset($cart_item['product_id']) && $cart_item['product_id'] == 13534) {
+                $has_product_13534 = true;
+                break;
+            }
         }
     }
 
-    // حذف فیلدهایی که همیشه نمی‌خواهید (نام شرکت و آدرس ۲ و ایمیل)
+    // حذف همه فیلدها غیر از نام و موبایل
+    unset($fields['billing']['billing_first_name']);
+    unset($fields['billing']['billing_last_name']);
     unset($fields['billing']['billing_company']);
+    unset($fields['billing']['billing_address_1']);
     unset($fields['billing']['billing_address_2']);
+    unset($fields['billing']['billing_city']);
+    unset($fields['billing']['billing_postcode']);
+    unset($fields['billing']['billing_state']);
+    unset($fields['billing']['billing_country']);
     unset($fields['billing']['billing_email']);
 
-    // ترکیب فیلدهای نام و نام خانوادگی
+    // اضافه کردن فیلد نام کامل
     $fields['billing']['billing_full_name'] = array(
         'label'    => 'نام و نام خانوادگی',
         'required' => true,
@@ -815,30 +921,26 @@ function customize_checkout_fields($fields) {
         'priority' => 10,
     );
 
-    // حذف فیلدهای جداگانه نام و نام خانوادگی
-    unset($fields['billing']['billing_first_name']);
-    unset($fields['billing']['billing_last_name']);
-
-    // حذف فیلدهای مربوط به آدرس در صورت نبودن محصول فیزیکی
-    if (!$has_physical_products) {
-        unset($fields['billing']['billing_address_1']);
-        unset($fields['billing']['billing_city']);
-        unset($fields['billing']['billing_postcode']);
-        unset($fields['billing']['billing_state']);
-        unset($fields['billing']['billing_country']);
+    // اضافه کردن فیلدهای آدرس فقط در صورت وجود محصول 13534
+    if ($has_product_13534) {
+        $fields['billing']['billing_address_1'] = array(
+            'label'       => 'آدرس پستی',
+            'required'    => true,
+            'class'       => array('form-row-wide'),
+            'priority'    => 50,
+        );
+        
+        $fields['billing']['billing_postcode'] = array(
+            'label'       => 'کد پستی',
+            'required'    => true,
+            'class'       => array('form-row-wide'),
+            'priority'    => 60,
+        );
     }
+
     return $fields;
 }
 add_filter('woocommerce_checkout_fields', 'customize_checkout_fields');
-
-function customize_default_address_fields($address_fields) {
-    // اصلاح فیلدها
-    $address_fields['address_1']['label'] = 'آدرس پستی';
-    $address_fields['address_1']['placeholder'] = '';
-    $address_fields['postcode']['label'] = 'کد پستی';
-    return $address_fields;
-}
-add_filter('woocommerce_default_address_fields', 'customize_default_address_fields');
 
 // تبدیل نام کامل به نام و نام خانوادگی هنگام ذخیره سفارش
 function split_full_name_before_save($posted_data) {
@@ -956,33 +1058,45 @@ function increment_post_views($postID) {
 }
 
 function track_post_views() {
-    if (is_single() || is_page()) {
+    // فقط برای کاربران غیر لاگین و صفحات مهم
+    if (!is_user_logged_in() && (is_single() || is_page())) {
         $postID = get_the_ID();
-        increment_post_views($postID);
+        if ($postID) {
+            increment_post_views($postID);
+        }
     }
 }
-add_action('wp_head', 'track_post_views');
+// اجرا در wp_footer به جای wp_head برای کاهش تأثیر روی سرعت بارگذاری
+add_action('wp_footer', 'track_post_views');
 
 // =============================================================================================================
 // Detect User IP in Woo Checkout Page
 
 function isUserFromIran() {
-
+    // کش کردن نتیجه برای جلوگیری از درخواست‌های مکرر
     $userIP = $_SERVER['REMOTE_ADDR'];
+    $cache_key = 'iran_check_' . md5($userIP);
+    $cached_result = get_transient($cache_key);
+    
+    if ($cached_result !== false) {
+        return $cached_result;
+    }
 
     // ارسال درخواست به سرویس موقعیت‌یابی
     $ch = curl_init();
     $geolocationAPI = "http://ip-api.com/json/$userIP";
     curl_setopt($ch, CURLOPT_URL, $geolocationAPI);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 5);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 3); // کاهش تایم‌اوت
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
 
     $response = curl_exec($ch);
 
     // بستن cURL در صورت بروز خطا
     if ($response === false) {
         curl_close($ch);
-        return null; // ارسال مقدار null به جای false که می‌تواند به معنای خطا در موقعیت‌یابی باشد
+        set_transient($cache_key, null, 3600); // کش برای 1 ساعت
+        return null;
     }
 
     curl_close($ch);
@@ -991,11 +1105,15 @@ function isUserFromIran() {
 
     // اگر پاسخ معتبر نبود
     if (empty($data) || empty($data->country)) {
-        return null; // ارسال مقدار null در صورتی که موقعیت‌یابی نتواهد نتیجه بدهد
+        set_transient($cache_key, null, 3600);
+        return null;
     }
 
-    // بررسی کشور
-    return $data->country == "Iran" ? true : false;
+    // بررسی کشور و کش کردن نتیجه
+    $result = $data->country == "Iran" ? true : false;
+    set_transient($cache_key, $result, 3600); // کش برای 1 ساعت
+    
+    return $result;
 }
 
 function displayVPNAlertOnCheckout() {
@@ -1121,15 +1239,15 @@ function display_custom_order_content($order) {
             }
         }
         
-        // بررسی متغیر خاص برای باکس VIP (متغیر ID: 38420 از محصول 34894)
+        // بررسی متغیر خاص برای باکس VIP (متغیر ID: 41078 از محصول 41077)
         $variation_id = $item->get_variation_id();
-        if ($variation_id == 38420) {
+        if ($variation_id == 41078) {
             $show_vip_box = true;
         }
         
         // بررسی محصولات ساده (اختیاری - برای سازگاری با کد قبلی)
         $product_id = $product->get_id();
-        $vip_product_id = 34894;
+        $vip_product_id = 41077;
         $form_product_ids = [13832, 14259];
         
         if ($product_id == $vip_product_id) $show_vip_box = true;
@@ -1339,16 +1457,22 @@ function change_next_button_for_specific_form( $button, $form ) {
 
 // ============================================================================
 // تکمیل سفارشات به حالت completed به صورت خودکار
-add_action( 'woocommerce_thankyou', 'auto_complete_all_orders' );
+add_action( 'woocommerce_order_status_processing', 'auto_complete_all_orders', 10, 1 );
+add_action( 'woocommerce_thankyou', 'auto_complete_all_orders', 10, 1 );
 function auto_complete_all_orders( $order_id ) {
     if ( ! $order_id ) {
         return;
     }
 
     $order = wc_get_order( $order_id );
+    
+    if ( ! $order ) {
+        return;
+    }
 
+    // تبدیل به completed فقط اگر در حالت processing باشد
     if ( $order->has_status( 'processing' ) ) {
-        $order->update_status( 'completed' );
+        $order->update_status( 'completed', 'تغییر خودکار به حالت تکمیل شده' );
     }
 }
 
@@ -1375,3 +1499,385 @@ function custom_package_discount( $cart ) {
         $cart->add_fee( 'تخفیف پکیج زبان فنی', -$discount_amount );
     }
 }
+
+// ============================================================================
+// پاک‌سازی کش هنگام تغییرات مهم
+function clear_performance_cache() {
+    // پاک کردن کش محصولات کاربر هنگام خرید جدید
+    if (isset($_GET['order-received'])) {
+        $user_id = get_current_user_id();
+        if ($user_id) {
+            delete_transient('user_products_' . $user_id);
+        }
+    }
+}
+add_action('init', 'clear_performance_cache');
+
+// پاک کردن کش هنگام تغییر پروفایل کاربر
+function clear_user_cache_on_profile_update($user_id) {
+    delete_transient('user_phone_' . md5($user_id));
+    delete_transient('user_products_' . $user_id);
+}
+add_action('profile_update', 'clear_user_cache_on_profile_update');
+
+// ============================================================================
+// بهینه‌سازی اسکریپت‌های آنالیتیکس با Lazy Loading
+function optimize_analytics_scripts() {
+    // فقط برای کاربران غیر ادمین و صفحات مهم
+    if (is_admin() || (!is_front_page() && !is_product() && !is_shop() && !is_cart() && !is_checkout() && !is_page())) {
+        return;
+    }
+    
+    // بارگذاری تاخیری اسکریپت‌ها
+    ?>
+    <script>
+    // Lazy loading برای GA4
+    function loadGA4Script() {
+        if (window.gtag) return; // جلوگیری از بارگذاری تکراری
+        
+        var script = document.createElement('script');
+        script.async = true;
+        script.src = 'https://www.googletagmanager.com/gtag/js?id=G-3PNMHPF870';
+        document.head.appendChild(script);
+        
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-3PNMHPF870', {
+            'anonymize_ip': true,
+            'cookie_flags': 'SameSite=None;Secure',
+            'send_page_view': false // جلوگیری از ارسال خودکار page_view
+        });
+        
+        // ارسال page_view دستی پس از بارگذاری کامل
+        gtag('event', 'page_view', {
+            'page_title': document.title,
+            'page_location': window.location.href
+        });
+    }
+    
+    // بارگذاری هوشمند: پس از تعامل کاربر یا 3 ثانیه
+    var analyticsLoaded = false;
+    
+    function loadAnalytics() {
+        if (analyticsLoaded) return;
+        analyticsLoaded = true;
+        loadGA4Script();
+    }
+    
+    // بارگذاری فوری در صورت تعامل کاربر
+    ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'].forEach(function(event) {
+        document.addEventListener(event, loadAnalytics, { once: true, passive: true });
+    });
+    
+    // بارگذاری تاخیری
+    if ('requestIdleCallback' in window) {
+        requestIdleCallback(loadAnalytics, { timeout: 3000 });
+    } else {
+        setTimeout(loadAnalytics, 3000);
+    }
+    
+    // بارگذاری فوری در صفحات مهم
+    <?php if (is_front_page() || is_cart() || is_checkout()): ?>
+    loadAnalytics();
+    <?php endif; ?>
+    </script>
+    <?php
+}
+
+// اجرای بهینه‌سازی فقط در صفحات فرانت‌اند
+add_action('wp_footer', 'optimize_analytics_scripts');
+
+// ============================================================================
+// ردیابی رویدادهای مهم WooCommerce در GA4
+function track_woocommerce_events() {
+    if (is_admin()) return;
+    ?>
+    <script>
+    // ردیابی رویدادهای خرید
+    document.addEventListener('DOMContentLoaded', function() {
+        // ردیابی اضافه کردن به سبد خرید
+        document.addEventListener('click', function(e) {
+            if (e.target.matches('a[href*="add-to-cart"]') || e.target.closest('a[href*="add-to-cart"]')) {
+                if (window.gtag) {
+                    gtag('event', 'add_to_cart', {
+                        'currency': 'IRR',
+                        'value': 0 // مقدار از المنت گرفته شود
+                    });
+                }
+            }
+        });
+        
+        // ردیابی شروع چکاوت
+        if (document.body.classList.contains('woocommerce-checkout')) {
+            if (window.gtag) {
+                gtag('event', 'begin_checkout', {
+                    'currency': 'IRR'
+                });
+            }
+        }
+        
+        // ردیابی تکمیل خرید
+        if (document.body.classList.contains('woocommerce-order-received')) {
+            if (window.gtag) {
+                gtag('event', 'purchase', {
+                    'currency': 'IRR',
+                    'transaction_id': '<?php echo isset($_GET['key']) ? sanitize_text_field($_GET['key']) : ''; ?>'
+                });
+            }
+        }
+    });
+    </script>
+    <?php
+}
+add_action('wp_footer', 'track_woocommerce_events');
+
+// ============================================================================
+// اضافه کردن اسکریپت چت بات آیدا به صفحه خاص
+function add_aida_chatbot_script() {
+    // فقط در صفحه خاص نمایش داده شود (می‌توانید slug صفحه را تغییر دهید)
+    if (is_page('test-aida-chatbot')) {
+        ?>
+        <script src="https://cdn.aidasales.ir/chatbox/aida-chatbot.min.fa.js" 
+                data-aida-api-key="1L93YMKEC9" 
+                data-position-chatbox="left" 
+                data-initial-state="closed">
+        </script>
+        <?php
+    }
+}
+add_action('wp_footer', 'add_aida_chatbot_script');
+
+// ============================================================================
+// اضافه کردن باکس پشتیبانی کارمپ بعد از خرید کارمپ
+add_action( 'woocommerce_thankyou', 'show_elementor_template_after_specific_product_purchase', 10, 1 );
+function show_elementor_template_after_specific_product_purchase( $order_id ) {
+    if ( ! $order_id ) return;
+    $target_product_id = 39576;
+    $order = wc_get_order( $order_id );
+    if ( ! $order ) return;
+
+    foreach ( $order->get_items() as $item ) {
+        if ( $item->get_product_id() == $target_product_id ) {
+            echo do_shortcode( '[elementor-template id="40177"]' );
+            break;
+        }
+    }
+}
+
+// ===================================================================
+// 🧹 حذف Bloat پیشفرض وردپرس
+// Author: Nias
+// ===================================================================
+
+// حذف هدرهای اضافی وردپرس
+add_action('init', 'nias_remove_wp_headers');
+function nias_remove_wp_headers() {
+    remove_action('wp_head', 'rsd_link');                         // حذف لینک RSD
+    remove_action('wp_head', 'wp_generator');                     // حذف نسخه وردپرس
+    remove_action('wp_head', 'index_rel_link');                   // حذف لینک Index
+    remove_action('wp_head', 'wlwmanifest_link');                 // حذف WLW
+    remove_action('wp_head', 'parent_post_rel_link', 10, 0);      // حذف لینک والد
+    remove_action('wp_head', 'start_post_rel_link', 10, 0);       // حذف لینک شروع
+    remove_action('wp_head', 'wp_shortlink_wp_head', 10, 0);      // حذف شورت‌لینک
+    remove_action('wp_head', 'wp_shortlink_header', 10, 0);       // حذف شورت‌لینک هدر
+    remove_action('wp_head', 'adjacent_posts_rel_link_wp_head', 10, 0); // حذف لینک‌های مجاور
+}
+
+// ===================================================================
+// 🚫 غیرفعال کردن RSS و فیدها
+function nias_disable_feed() {
+    wp_die( __( 'فید غیرفعال است، لطفاً به <a href="'. esc_url( home_url( '/' ) ) .'">صفحه اصلی</a> برگردید.' ) );
+}
+add_action('do_feed', 'nias_disable_feed', 1);
+add_action('do_feed_rdf', 'nias_disable_feed', 1);
+add_action('do_feed_rss', 'nias_disable_feed', 1);
+add_action('do_feed_rss2', 'nias_disable_feed', 1);
+add_action('do_feed_atom', 'nias_disable_feed', 1);
+add_action('do_feed_rss2_comments', 'nias_disable_feed', 1);
+add_action('do_feed_atom_comments', 'nias_disable_feed', 1);
+
+// حذف فید از هدر
+remove_action('wp_head', 'feed_links_extra', 3);
+remove_action('wp_head', 'feed_links', 2);
+
+// ===================================================================
+// 🎨 حذف Dashicons برای کاربران غیر لاگین
+add_action('wp_print_styles', 'nias_remove_dashicons', 100);
+function nias_remove_dashicons() {
+    if (!is_admin_bar_showing() && !is_customize_preview()) {
+        wp_dequeue_style('dashicons');
+        wp_deregister_style('dashicons');
+    }
+}
+
+// ===================================================================
+// 😀 غیرفعال کردن Emoji
+add_action('init', 'nias_disable_emojis');
+function nias_disable_emojis() {
+    remove_action('wp_head', 'print_emoji_detection_script', 7);
+    remove_action('admin_print_scripts', 'print_emoji_detection_script');
+    remove_action('wp_print_styles', 'print_emoji_styles');
+    remove_filter('the_content_feed', 'wp_staticize_emoji');
+    remove_action('admin_print_styles', 'print_emoji_styles');
+    remove_filter('comment_text_rss', 'wp_staticize_emoji');
+    remove_filter('wp_mail', 'wp_staticize_emoji_for_email');
+    add_filter('tiny_mce_plugins', 'nias_disable_emojis_tinymce');
+}
+
+function nias_disable_emojis_tinymce($plugins) {
+    if (is_array($plugins)) {
+        return array_diff($plugins, array('wpemoji'));
+    } else {
+        return array();
+    }
+}
+
+add_action('wp_enqueue_scripts', function() {
+    wp_deregister_script('jquery-migrate');
+    wp_dequeue_script('jquery-migrate');
+}, 100);
+
+add_filter('wp_default_scripts', function($scripts) {
+    if (isset($scripts->registered['jquery'])) {
+        $scripts->registered['jquery']->deps = array_diff(
+            $scripts->registered['jquery']->deps,
+            ['jquery-migrate']
+        );
+    }
+});
+
+
+
+
+
+function get_sepehr_final_prices() {
+    return array(
+        41078 => 9800000, 
+        38427 => 9800000, 
+        18535 => 7500000, 
+        16180 => 3800000, 
+        13928 => 3800000, 
+        13534 => 1900000, 
+        41462 => 9800000,
+    );
+}
+
+// تابع کمکی برای نوشتن لاگ
+function sepehr_log( $message ) {
+    $log_file = WP_CONTENT_DIR . '/uploads/sepehr_debug_log.txt';
+    $time = current_time( 'mysql' );
+    error_log( "[$time] $message\n", 3, $log_file );
+}
+
+add_action('template_redirect', 'handle_direct_purchase_link');
+function handle_direct_purchase_link() {
+    if ( isset($_GET['special_buy']) ) {
+        
+        $variation_id = isset($_GET['vid']) ? absint($_GET['vid']) : 0;
+        $url_product_id = isset($_GET['pid']) ? absint($_GET['pid']) : 0;
+        
+        sepehr_log( "1. درخواست دریافت شد. VID: $variation_id | PID: $url_product_id" );
+
+        $defined_prices = get_sepehr_final_prices();
+        $target_check_id = $variation_id ? $variation_id : $url_product_id;
+
+        sepehr_log( "2. آیدی هدف برای بررسی: $target_check_id" );
+
+        if ( array_key_exists( $target_check_id, $defined_prices ) ) {
+            
+            sepehr_log( "3. آیدی در لیست قیمت‌ها پیدا شد." );
+
+            $final_product_id = 0;
+            $final_variation_id = 0;
+            $final_attributes = array();
+
+            if ( $variation_id > 0 ) {
+                $product_obj = wc_get_product($variation_id);
+                
+                if ( ! $product_obj ) {
+                    sepehr_log( "ERROR: آبجکت محصول یافت نشد (NULL). آیدی: $variation_id" );
+                    return;
+                }
+
+                sepehr_log( "4. نوع محصول پیدا شده: " . $product_obj->get_type() );
+
+                if ( $product_obj->is_type('variation') ) {
+                    $final_variation_id = $variation_id;
+                    $final_product_id = $product_obj->get_parent_id();
+                    $final_attributes = $product_obj->get_variation_attributes();
+                    sepehr_log( "5. اطلاعات متغیر استخراج شد. Parent ID: $final_product_id" );
+                } else {
+                    sepehr_log( "ERROR: آیدی وارد شده ($variation_id) مربوط به یک متغیر (Variation) نیست. نوع فعلی: " . $product_obj->get_type() );
+                    return; // اینجا جایی است که احتمالا خارج می‌شود و صفحه اصلی را می‌بینید
+                }
+            } else {
+                $final_product_id = $url_product_id;
+                sepehr_log( "5. محصول ساده انتخاب شد. ID: $final_product_id" );
+            }
+
+            WC()->cart->empty_cart();
+
+            try {
+                $result = WC()->cart->add_to_cart( 
+                    $final_product_id, 
+                    1, 
+                    $final_variation_id, 
+                    $final_attributes, 
+                    ['is_fixed_price' => true] 
+                );
+
+                if ( $result ) {
+                    sepehr_log( "SUCCESS: محصول به سبد اضافه شد. ریدایرکت به چک‌اوت." );
+                    wp_safe_redirect( wc_get_checkout_url() );
+                    exit;
+                } else {
+                    sepehr_log( "ERROR: تابع add_to_cart مقدار false برگرداند. احتمالا مشکل موجودی یا قیمت." );
+                    wc_add_notice( 'خطا در افزودن محصول به سبد خرید.', 'error' );
+                }
+            } catch ( Exception $e ) {
+                sepehr_log( "EXCEPTION: " . $e->getMessage() );
+                wc_add_notice( 'خطای سیستمی رخ داد.', 'error' );
+            }
+        } else {
+            sepehr_log( "ERROR: آیدی $target_check_id در لیست قیمت‌های تعریف شده وجود ندارد." );
+        }
+    }
+}
+
+// بقیه توابع (محاسبه قیمت و ...) سر جای خودشان بمانند
+add_action( 'woocommerce_before_calculate_totals', 'apply_fixed_price_logic', 10, 1 );
+function apply_fixed_price_logic( $cart ) {
+    if ( is_admin() && ! defined( 'DOING_AJAX' ) ) return;
+    $defined_prices = get_sepehr_final_prices();
+    foreach ( $cart->get_cart() as $cart_item ) {
+        if ( isset( $cart_item['is_fixed_price'] ) ) {
+            $product = $cart_item['data'];
+            $target_id = $product->is_type('variation') ? $product->get_id() : $product->get_id();
+             // برای اطمینان از اینکه آیدی درست خوانده می‌شود
+            if ( $product->is_type('variation') && array_key_exists( $product->get_id(), $defined_prices ) ) {
+                 $target_id = $product->get_id();
+            } elseif ( array_key_exists( $product->get_parent_id(), $defined_prices ) ) { // sometimes needed
+                 $target_id = $product->get_parent_id();
+            }
+
+            if ( array_key_exists( $target_id, $defined_prices ) ) {
+                $product->set_price( $defined_prices[$target_id] );
+            }
+        }
+    }
+}
+
+add_filter( 'woocommerce_coupon_get_discount_amount', 'block_coupons_for_fixed_price', 10, 5 );
+function block_coupons_for_fixed_price( $discount, $discounting_amount, $cart_item, $single, $coupon ) {
+    if ( isset( $cart_item['is_fixed_price'] ) ) {
+        return 0;
+    }
+    return $discount;
+}
+
+// Shortcode for Expert Tip Box
+function carno_tip_shortcode($atts, $content = null) {
+    return '<div class="carno-tip-box">' . do_shortcode($content) . '</div>';
+}
+add_shortcode('carno_tip', 'carno_tip_shortcode');
