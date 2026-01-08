@@ -4,7 +4,7 @@
 Plugin Name:  Carno Customization Plugin
 Plugin URI:   https://sepehralimohammadi.com/
 Description:  این افزونه جهت اعمال شخصی سازی های مورد نیاز بر روی وبسایت مهندس سپهر علیمحمدی توسعه داده شده است. لطفا از غیرفعال کردن این افزونه خودداری فرمایید!
-Version:      1.15.0
+Version:      1.14.0
 Author:       سپهر علیمحمدی
 Author URI:   https://sepehralimohammadi.com/
 */
@@ -360,42 +360,6 @@ add_action('woocommerce_new_order', 'create_user_from_guest_order_by_phone_v2');
 add_action('woocommerce_order_status_processing', 'create_user_from_guest_order_by_phone_v2');
 add_action('woocommerce_order_status_completed', 'create_user_from_guest_order_by_phone_v2');
 
-// add_action('admin_init', function() {
-//     if (isset($_GET['check_guest_orders'])) {
-//         global $wpdb;
-//         $count = $wpdb->get_var("
-//             SELECT COUNT(*) 
-//             FROM {$wpdb->posts} p
-//             LEFT JOIN {$wpdb->postmeta} m ON p.ID = m.post_id AND m.meta_key = '_customer_user'
-//             WHERE p.post_type = 'shop_order'
-//               AND (m.meta_value = '0' OR m.meta_value IS NULL)
-//         ");
-//         exit("تعداد سفارش‌های مهمان باقی‌مانده: {$count}");
-//     }
-// });
-
-// add_action('init', function() {
-//     if (is_admin() && isset($_GET['run_guest_fix'])) {
-
-//         global $wpdb;
-
-//         // همه سفارش‌های مهمان واقعی (customer_id=0 یا متا خالی)
-//         $order_ids = $wpdb->get_col("
-//             SELECT p.ID
-//             FROM {$wpdb->posts} p
-//             LEFT JOIN {$wpdb->postmeta} m 
-//                 ON p.ID = m.post_id AND m.meta_key = '_customer_user'
-//             WHERE p.post_type = 'shop_order'
-//               AND (m.meta_value = '0' OR m.meta_value IS NULL)
-//         ");
-
-//         foreach ($order_ids as $order_id) {
-//             create_user_from_guest_order_by_phone_v2($order_id);
-//         }
-
-//         exit('همه سفارش‌های مهمان بررسی شدند ✅ (تعداد: ' . count($order_ids) . ')');
-//     }
-// });
 // ==========================================================================
 $request_uri = $_SERVER['REQUEST_URI'];
 // if URL ends with .html then 410
@@ -638,6 +602,11 @@ add_action('woocommerce_new_product', 'nias_save_original_stock');
 
 
 //=============================================================================
+
+
+
+
+// =============================================================================================================
 // اتصال سفارشات مهمان به حساب کاربری بعد از لاگین
 function connect_guest_orders_by_phone_to_user_account($user_id) {
     // 1. اطمینان از معتبر بودن شناسه کاربر
@@ -1751,6 +1720,12 @@ add_filter('wp_default_scripts', function($scripts) {
 
 
 
+/**
+ * لیست قیمت‌های نهایی محصولات
+ */
+/**
+ * ۱. لیست قیمت‌های نهایی محصولات (قیمت مقطوع)
+ */
 function get_sepehr_final_prices() {
     return array(
         41078 => 9800000, 
@@ -1762,121 +1737,265 @@ function get_sepehr_final_prices() {
         41462 => 9800000,
     );
 }
-
-// تابع کمکی برای نوشتن لاگ
-function sepehr_log( $message ) {
-    $log_file = WP_CONTENT_DIR . '/uploads/sepehr_debug_log.txt';
-    $time = current_time( 'mysql' );
-    error_log( "[$time] $message\n", 3, $log_file );
+function get_sepehr_redirect_only_ids() {
+    return array(); //محصولاتی که باید صفحه محصولش باز بشه
 }
-
 add_action('template_redirect', 'handle_direct_purchase_link');
 function handle_direct_purchase_link() {
-    if ( isset($_GET['special_buy']) ) {
-        
-        $variation_id = isset($_GET['vid']) ? absint($_GET['vid']) : 0;
-        $url_product_id = isset($_GET['pid']) ? absint($_GET['pid']) : 0;
-        
-        sepehr_log( "1. درخواست دریافت شد. VID: $variation_id | PID: $url_product_id" );
+    if ( !isset($_GET['special_buy']) || is_admin() ) return;
 
-        $defined_prices = get_sepehr_final_prices();
-        $target_check_id = $variation_id ? $variation_id : $url_product_id;
+    $variation_id = isset($_GET['vid']) ? absint($_GET['vid']) : 0;
+    $product_id   = isset($_GET['pid']) ? absint($_GET['pid']) : 0;
+    $target_id    = $variation_id > 0 ? $variation_id : $product_id;
 
-        sepehr_log( "2. آیدی هدف برای بررسی: $target_check_id" );
+    if ( $target_id > 0 ) {
+        $redirect_only_list = get_sepehr_redirect_only_ids();
 
-        if ( array_key_exists( $target_check_id, $defined_prices ) ) {
-            
-            sepehr_log( "3. آیدی در لیست قیمت‌ها پیدا شد." );
+        // --- سناریو ۱: محصول در لیست "فقط ریدایرکت" است ---
+        if ( in_array( $target_id, $redirect_only_list ) ) {
+            // کاربر را مستقیماً به صفحه محصول بفرست (بدون افزودن به سبد و بدون تخفیف)
+            wp_safe_redirect( get_permalink( $target_id ) );
+            exit;
+        }
 
-            $final_product_id = 0;
-            $final_variation_id = 0;
-            $final_attributes = array();
+        // --- سناریو ۲: محصول در لیست "تخفیف ویژه" است ---
+        if ( $_GET['special_buy'] === '1' ) {
+            $defined_prices = get_sepehr_final_prices();
 
-            if ( $variation_id > 0 ) {
-                $product_obj = wc_get_product($variation_id);
-                
-                if ( ! $product_obj ) {
-                    sepehr_log( "ERROR: آبجکت محصول یافت نشد (NULL). آیدی: $variation_id" );
-                    return;
+            if ( array_key_exists( $target_id, $defined_prices ) ) {
+                if ( function_exists('WC') && WC()->cart ) {
+                    WC()->cart->empty_cart();
+
+                    $passed_id = $product_id;
+                    $passed_vid = 0;
+                    $attributes = array();
+
+                    if ( $variation_id > 0 ) {
+                        $product_obj = wc_get_product($variation_id);
+                        if ( $product_obj && $product_obj->is_type('variation') ) {
+                            $passed_vid = $variation_id;
+                            $passed_id  = $product_obj->get_parent_id();
+                            $attributes = $product_obj->get_variation_attributes();
+                        }
+                    }
+
+                    $was_added = WC()->cart->add_to_cart( $passed_id, 1, $passed_vid, $attributes, ['is_fixed_price' => true] );
+
+                    if ( $was_added ) {
+                        wp_safe_redirect( wc_get_checkout_url() );
+                        exit;
+                    }
                 }
-
-                sepehr_log( "4. نوع محصول پیدا شده: " . $product_obj->get_type() );
-
-                if ( $product_obj->is_type('variation') ) {
-                    $final_variation_id = $variation_id;
-                    $final_product_id = $product_obj->get_parent_id();
-                    $final_attributes = $product_obj->get_variation_attributes();
-                    sepehr_log( "5. اطلاعات متغیر استخراج شد. Parent ID: $final_product_id" );
-                } else {
-                    sepehr_log( "ERROR: آیدی وارد شده ($variation_id) مربوط به یک متغیر (Variation) نیست. نوع فعلی: " . $product_obj->get_type() );
-                    return; // اینجا جایی است که احتمالا خارج می‌شود و صفحه اصلی را می‌بینید
-                }
-            } else {
-                $final_product_id = $url_product_id;
-                sepehr_log( "5. محصول ساده انتخاب شد. ID: $final_product_id" );
             }
-
-            WC()->cart->empty_cart();
-
-            try {
-                $result = WC()->cart->add_to_cart( 
-                    $final_product_id, 
-                    1, 
-                    $final_variation_id, 
-                    $final_attributes, 
-                    ['is_fixed_price' => true] 
-                );
-
-                if ( $result ) {
-                    sepehr_log( "SUCCESS: محصول به سبد اضافه شد. ریدایرکت به چک‌اوت." );
-                    wp_safe_redirect( wc_get_checkout_url() );
-                    exit;
-                } else {
-                    sepehr_log( "ERROR: تابع add_to_cart مقدار false برگرداند. احتمالا مشکل موجودی یا قیمت." );
-                    wc_add_notice( 'خطا در افزودن محصول به سبد خرید.', 'error' );
-                }
-            } catch ( Exception $e ) {
-                sepehr_log( "EXCEPTION: " . $e->getMessage() );
-                wc_add_notice( 'خطای سیستمی رخ داد.', 'error' );
-            }
-        } else {
-            sepehr_log( "ERROR: آیدی $target_check_id در لیست قیمت‌های تعریف شده وجود ندارد." );
         }
     }
 }
 
-// بقیه توابع (محاسبه قیمت و ...) سر جای خودشان بمانند
-add_action( 'woocommerce_before_calculate_totals', 'apply_fixed_price_logic', 10, 1 );
+/**
+ * ۳. تغییر قیمت در سبد خرید و حفظ داده در سشن
+ */
+add_action( 'woocommerce_before_calculate_totals', 'apply_fixed_price_logic', 20, 1 );
 function apply_fixed_price_logic( $cart ) {
     if ( is_admin() && ! defined( 'DOING_AJAX' ) ) return;
     $defined_prices = get_sepehr_final_prices();
     foreach ( $cart->get_cart() as $cart_item ) {
         if ( isset( $cart_item['is_fixed_price'] ) ) {
             $product = $cart_item['data'];
-            $target_id = $product->is_type('variation') ? $product->get_id() : $product->get_id();
-             // برای اطمینان از اینکه آیدی درست خوانده می‌شود
-            if ( $product->is_type('variation') && array_key_exists( $product->get_id(), $defined_prices ) ) {
-                 $target_id = $product->get_id();
-            } elseif ( array_key_exists( $product->get_parent_id(), $defined_prices ) ) { // sometimes needed
-                 $target_id = $product->get_parent_id();
-            }
-
-            if ( array_key_exists( $target_id, $defined_prices ) ) {
-                $product->set_price( $defined_prices[$target_id] );
+            $current_id = $product->get_id();
+            if ( array_key_exists( $current_id, $defined_prices ) ) {
+                $product->set_price( $defined_prices[$current_id] );
             }
         }
     }
 }
 
+add_filter( 'woocommerce_get_cart_item_from_session', function( $cart_item, $values ) {
+    if ( isset( $values['is_fixed_price'] ) ) {
+        $cart_item['is_fixed_price'] = $values['is_fixed_price'];
+    }
+    return $cart_item;
+}, 10, 2 );
+
+/**
+ * ۴. جلوگیری از اعمال کوپن روی این محصولات
+ */
 add_filter( 'woocommerce_coupon_get_discount_amount', 'block_coupons_for_fixed_price', 10, 5 );
 function block_coupons_for_fixed_price( $discount, $discounting_amount, $cart_item, $single, $coupon ) {
-    if ( isset( $cart_item['is_fixed_price'] ) ) {
-        return 0;
-    }
+    if ( isset( $cart_item['is_fixed_price'] ) ) return 0;
     return $discount;
 }
 
-// Shortcode for Expert Tip Box
+// ==========================================
+// بخش جدید: آمار و نمایش در پنل مدیریت
+// ==========================================
+
+/**
+ * ۵. ذخیره متادیتا در سفارش (ثبت آیدی محصول برای آمار)
+ */
+add_action( 'woocommerce_checkout_create_order', 'carno_save_special_buy_to_order', 10, 2 );
+function carno_save_special_buy_to_order( $order, $data ) {
+    if ( WC()->cart ) {
+        foreach ( WC()->cart->get_cart() as $cart_item ) {
+            if ( isset( $cart_item['is_fixed_price'] ) ) {
+                $product_id = $cart_item['data']->get_id();
+                $order->update_meta_data( '_is_sepehr_special_buy', $product_id );
+                break;
+            }
+        }
+    }
+}
+/**
+ * ۶. اضافه کردن ستون به مدیریت (سازگار با همه نسخه‌ها)
+ */
+add_filter( 'manage_edit-shop_order_columns', 'carno_add_order_special_column' );
+add_filter( 'manage_woocommerce_page_wc-orders_columns', 'carno_add_order_special_column' );
+function carno_add_order_special_column( $columns ) {
+    $columns['special_buy_status'] = 'کمپین ویژه';
+    return $columns;
+}
+
+/**
+ * ۷. نمایش محتوا در ستون (فراخوانی برای نسخه قدیم و HPOS)
+ */
+add_action( 'manage_shop_order_posts_custom_column', 'carno_display_order_special_column', 10, 2 );
+function carno_display_order_special_column( $column, $post_id ) {
+    if ( $column === 'special_buy_status' ) {
+        $is_special = get_post_meta( $post_id, '_is_sepehr_special_buy', true );
+        carno_render_special_label( $is_special );
+    }
+}
+
+add_action( 'manage_woocommerce_page_wc-orders_custom_column', 'carno_display_order_hpos_special_column', 10, 2 );
+function carno_display_order_hpos_special_column( $column, $order ) {
+    if ( $column === 'special_buy_status' ) {
+        $is_special = $order->get_meta( '_is_sepehr_special_buy' );
+        carno_render_special_label( $is_special );
+    }
+}
+
+/**
+ * ۸. رندر کردن نهایی لیبل (تک‌رنگ و با متن ثابت)
+ */
+function carno_render_special_label( $is_special ) {
+    if ( empty($is_special) ) {
+        echo '<span style="color: #ccc;">—</span>';
+        return;
+    }
+
+    // تنظیمات ظاهر یکپارچه
+    $label = 'لینک‌های اسپات';
+    $color = '#555d66'; // طوسی پررنگ استاندارد
+
+    echo '<span style="background: ' . $color . '; color: #fff; padding: 6px 10px; border-radius: 4px; font-size: 12px; font-weight: bold; white-space: nowrap;">' . $label . '</span>';
+}
+
+/**
+ * ۹. منوی فیلتر بالای جدول سفارشات
+ */
+add_action( 'restrict_manage_posts', 'carno_filter_orders_by_special_buy_legacy' );
+add_action( 'woocommerce_order_list_table_restrict_manage_orders', 'carno_filter_orders_by_special_buy_hpos' );
+
+function carno_filter_orders_by_special_buy_dropdown() {
+    $current_v = isset( $_GET['carno_special_filter'] ) ? $_GET['carno_special_filter'] : '';
+    ?>
+    <select name="carno_special_filter" id="carno_special_filter">
+        <option value=""><?php _e( 'همه نوع خریدها', 'woocommerce' ); ?></option>
+        <option value="yes" <?php selected( $current_v, 'yes' ); ?>>فقط لینک‌های اسپات</option>
+    </select>
+    <?php
+}
+
+function carno_filter_orders_by_special_buy_legacy() {
+    global $typenow;
+    if ( 'shop_order' === $typenow ) { carno_filter_orders_by_special_buy_dropdown(); }
+}
+
+function carno_filter_orders_by_special_buy_hpos() {
+    carno_filter_orders_by_special_buy_dropdown();
+}
+
+/**
+ * ۱۰. اعمال فیلتر روی دیتابیس
+ */
+add_action( 'pre_get_posts', 'carno_apply_special_buy_filter_legacy' );
+add_filter( 'woocommerce_order_query_args', 'carno_apply_special_buy_filter_hpos' );
+
+function carno_apply_special_buy_filter_legacy( $query ) {
+    global $pagenow;
+    if ( is_admin() && 'edit.php' === $pagenow && (isset($_GET['post_type']) && 'shop_order' === $_GET['post_type']) && ! empty( $_GET['carno_special_filter'] ) ) {
+        $query->set( 'meta_query', array( array( 'key' => '_is_sepehr_special_buy', 'compare' => 'EXISTS' ) ) );
+    }
+}
+
+function carno_apply_special_buy_filter_hpos( $query_args ) {
+    if ( is_admin() && ! empty( $_GET['carno_special_filter'] ) ) {
+        $query_args['meta_query'][] = array( 'key' => '_is_sepehr_special_buy', 'compare' => 'EXISTS' );
+    }
+    return $query_args;
+}
+
+
+
+
+
+
+/**
+ * Zero-Conflict Dynamic Favicon for WoodMart
+ * This version uses a single-tag approach to prevent browser confusion.
+ */
+
+// ۱. پاکسازی کامل تمام فاوآیکون‌های وردپرس و وودمارت
+add_action('init', function() {
+    add_filter('site_icon_meta_tags', '__return_empty_array', 999);
+    remove_action('wp_head', 'wp_site_icon', 99);
+}, 999);
+
+// ۲. تزریق تگ واحد و اسکریپت کنترلر
+add_action('wp_head', 'carno_ultimate_favicon_switcher', 0);
+add_action('admin_head', 'carno_ultimate_favicon_switcher', 0);
+
+function carno_ultimate_favicon_switcher() {
+    // آدرس‌ها را دقیقاً چک کنید:
+    // اگر carno-logo-dark.webp لوگوی تیره است، برای تم روشن (Light Mode) استفاده می‌شود.
+    // اگر carno-logo-light.webp لوگوی سفید است، برای تم تیره (Dark Mode) استفاده می‌شود.
+    $white_logo = 'https://sepehralimohammadi.com/wp-content/uploads/2026/01/carno-logo-dark.webp'; 
+    $dark_logo  = 'https://sepehralimohammadi.com/wp-content/uploads/2026/01/carno-logo-light.webp';
+    $version    = '3.0.1'; // نسخه جدید برای دور زدن کش
+
+    ?>
+    <link rel="icon" id="carno-favicon" href="<?php echo $dark_logo; ?>?v=<?php echo $version; ?>" type="image/webp">
+    
+    <script>
+    (function() {
+        const whiteIcon = "<?php echo $white_logo; ?>?v=<?php echo $version; ?>";
+        const darkIcon  = "<?php echo $dark_logo; ?>?v=<?php echo $version; ?>";
+        const favElem   = document.getElementById('carno-favicon');
+        
+        function applyFavicon() {
+            // چک کردن اینکه آیا سیستم در حالت Dark Mode است یا خیر
+            const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+            
+            if (isDarkMode) {
+                favElem.href = whiteIcon;
+            } else {
+                favElem.href = darkIcon;
+            }
+        }
+
+        // اجرا به محض لود شدن اسکریپت
+        applyFavicon();
+
+        // گوش دادن به تغییر تم سیستم بدون نیاز به رفرش
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyFavicon);
+    })();
+    </script>
+    <?php
+}
+
+
+
+
+
 function carno_tip_shortcode($atts, $content = null) {
     return '<div class="carno-tip-box">' . do_shortcode($content) . '</div>';
 }
