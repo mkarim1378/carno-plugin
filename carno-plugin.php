@@ -537,7 +537,7 @@ function nias_inventory_progress_bar_with_timer($atts) {
         }
         .niasbar-fill {
             height: 100%;
-            background: linear-gradient(90deg, #ff6a00, #ff0000);
+            background: linear-gradient(90deg, #ed1c24, #ff0000);
             transition: width 0.5s ease-in-out;
             float: left;
         }
@@ -1226,11 +1226,11 @@ function display_custom_order_content($order) {
     if ($show_vip_box) : ?>
         <style>
         .vip-box {margin:30px auto;padding:25px;border-radius:15px;border:1px solid #e0e0e0;background:#f9f9f9;box-shadow:0 4px 12px rgba(0,0,0,0.08);text-align:center;}
-        .vip-box h2 {font-size:22px;margin-bottom:15px;color:#00004c;}
-        .vip-box p {font-size:16px;margin-bottom:20px;color:#00004c;line-height:1.9em;}
+        .vip-box h2 {font-size:22px;margin-bottom:15px;color:#2d2c74;}
+        .vip-box p {font-size:16px;margin-bottom:20px;color:#2d2c74;line-height:1.9em;}
         .vip-box .btn-group {display:flex;justify-content:center;gap:15px;flex-wrap:wrap;}
         .vip-box .btn-link {padding:12px 20px;border-radius:8px;text-decoration:none;font-size:16px;font-weight:600;color:#fff;transition:all .3s ease;}
-        .vip-box .btn-vip {background:#ff6d00}
+        .vip-box .btn-vip {background:#ed1c24}
         .vip-box .btn-vip:hover {background:#e4571b;}
         </style>
         <div class="vip-box">
@@ -1934,37 +1934,24 @@ function carno_apply_special_buy_filter_hpos( $query_args ) {
     return $query_args;
 }
 
-
-
-
-
-
 /**
  * Zero-Conflict Dynamic Favicon for WoodMart
  * This version uses a single-tag approach to prevent browser confusion.
  */
-
-// ۱. پاکسازی کامل تمام فاوآیکون‌های وردپرس و وودمارت
 add_action('init', function() {
     add_filter('site_icon_meta_tags', '__return_empty_array', 999);
     remove_action('wp_head', 'wp_site_icon', 99);
 }, 999);
 
-// ۲. تزریق تگ واحد و اسکریپت کنترلر
 add_action('wp_head', 'carno_ultimate_favicon_switcher', 0);
 add_action('admin_head', 'carno_ultimate_favicon_switcher', 0);
 
 function carno_ultimate_favicon_switcher() {
-    // آدرس‌ها را دقیقاً چک کنید:
-    // اگر carno-logo-dark.webp لوگوی تیره است، برای تم روشن (Light Mode) استفاده می‌شود.
-    // اگر carno-logo-light.webp لوگوی سفید است، برای تم تیره (Dark Mode) استفاده می‌شود.
     $white_logo = 'https://sepehralimohammadi.com/wp-content/uploads/2026/01/carno-logo-dark.webp'; 
     $dark_logo  = 'https://sepehralimohammadi.com/wp-content/uploads/2026/01/carno-logo-light.webp';
-    $version    = '3.0.1'; // نسخه جدید برای دور زدن کش
-
+    $version    = '3.0.1';
     ?>
     <link rel="icon" id="carno-favicon" href="<?php echo $dark_logo; ?>?v=<?php echo $version; ?>" type="image/webp">
-    
     <script>
     (function() {
         const whiteIcon = "<?php echo $white_logo; ?>?v=<?php echo $version; ?>";
@@ -1972,31 +1959,211 @@ function carno_ultimate_favicon_switcher() {
         const favElem   = document.getElementById('carno-favicon');
         
         function applyFavicon() {
-            // چک کردن اینکه آیا سیستم در حالت Dark Mode است یا خیر
             const isDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            
             if (isDarkMode) {
                 favElem.href = whiteIcon;
             } else {
                 favElem.href = darkIcon;
             }
         }
-
-        // اجرا به محض لود شدن اسکریپت
         applyFavicon();
-
-        // گوش دادن به تغییر تم سیستم بدون نیاز به رفرش
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyFavicon);
     })();
     </script>
     <?php
 }
 
-
-
-
-
 function carno_tip_shortcode($atts, $content = null) {
     return '<div class="carno-tip-box">' . do_shortcode($content) . '</div>';
 }
 add_shortcode('carno_tip', 'carno_tip_shortcode');
+
+// نمایش داینامیک باکس کال تو اکشن لندینگ جدید دوره ها بعد از اسکرول - ریدیزاین 1404
+add_action('wp_footer', function () {
+?>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+
+  if (window.innerWidth <= 1024) return;
+
+  var hero = document.getElementById("hero-section");
+  var cta = document.querySelector(".floating-cta");
+
+  if (!hero || !cta) return;
+
+  var heroBottom = hero.offsetTop + hero.offsetHeight;
+
+  window.addEventListener("scroll", function () {
+    if (window.scrollY > heroBottom) {
+      cta.classList.add("show");
+    } else {
+      cta.classList.remove("show");
+    }
+  });
+
+});
+</script>
+<?php
+});
+
+// قیمت داینامیک برای فرم محصول تو لندینگ ریدیزاین 1404
+// 1. پر کردن قیمت آنلاین (carno_online)
+add_filter( 'gform_field_value_carno_online', 'populate_online_price' );
+function populate_online_price( $value ) {
+    if ( ! class_exists( 'WooCommerce' ) || ! is_product() ) return $value;
+
+    $product = wc_get_product( get_the_ID() );
+
+    // سناریو الف: محصول ساده است (همون قیمت اصلی رو برگردون)
+    if ( $product->is_type( 'simple' ) ) {
+        return $product->get_price();
+    }
+
+    // سناریو ب: محصول متغیر است (دنبال وریشن آنلاین بگرد)
+    if ( $product->is_type( 'variable' ) ) {
+        $variations = $product->get_available_variations();
+        foreach ( $variations as $variation ) {
+            // چک میکنیم توی ویژگی‌های این وریشن کلمه "آنلاین" یا "online" هست یا نه
+            $attributes_str = implode( ' ', $variation['attributes'] );
+            if ( strpos( $attributes_str, 'آنلاین' ) !== false || strpos( $attributes_str, 'online' ) !== false ) {
+                return $variation['display_price'];
+            }
+        }
+    }
+    return $value;
+}
+
+// 2. پر کردن قیمت حضوری (carno_offline)
+add_filter( 'gform_field_value_carno_offline', 'populate_offline_price' );
+function populate_offline_price( $value ) {
+    if ( ! class_exists( 'WooCommerce' ) || ! is_product() ) return $value;
+
+    $product = wc_get_product( get_the_ID() );
+
+    // محصول ساده معمولا حضوری نداره (طبق سناریوی تو)، پس خالی برگردون یا صفر
+    if ( $product->is_type( 'simple' ) ) {
+        return ''; 
+    }
+
+    // محصول متغیر: دنبال وریشن حضوری بگرد
+    if ( $product->is_type( 'variable' ) ) {
+        $variations = $product->get_available_variations();
+        foreach ( $variations as $variation ) {
+            // چک میکنیم توی ویژگی‌های این وریشن کلمه "حضوری" یا "offline" هست یا نه
+            $attributes_str = implode( ' ', $variation['attributes'] );
+            if ( strpos( $attributes_str, 'حضوری' ) !== false || strpos( $attributes_str, 'onsite-course' ) !== false ) {
+                return $variation['display_price'];
+            }
+        }
+    }
+    return $value;
+}
+
+add_action( 'gform_post_payment_completed', 'carno_create_wc_order_after_payment_v2', 10, 2 );
+
+function carno_create_wc_order_after_payment_v2( $entry, $action ) {
+
+    // ---------------- تنظیمات دقیق (بر اساس گفته‌های تو) ----------------
+
+    $online_form_id  = 43; // آیدی فرم آنلاین
+    $onsite_form_id  = 42; // آیدی فرم حضوری
+
+    // نقشه فیلدها برای فرم آنلاین (ID 43)
+    $online_fields = array(
+        'name'  => 9,
+        'phone' => 8
+    );
+
+    // نقشه فیلدها برای فرم حضوری (ID 42)
+    $onsite_fields = array(
+        'name'  => 9,
+        'phone' => 8
+    );
+
+    // ------------------------------------------------------------------
+
+    // 1. تشخیص فرم و تنظیم متغیرها
+    $current_form_id = rgar( $entry, 'form_id' );
+    $target_slug     = '';
+    $fields_map      = array();
+
+    if ( $current_form_id == $online_form_id ) {
+        $target_slug = 'online-course';
+        $fields_map  = $online_fields;
+    } elseif ( $current_form_id == $onsite_form_id ) {
+        $target_slug = 'onsite-course';
+        $fields_map  = $onsite_fields;
+    } else {
+        return; // اگر فرم دیگری بود، کاری نکن
+    }
+
+    // 2. دریافت و پردازش اطلاعات کاربر
+    $full_name = rgar( $entry, $fields_map['name'] );
+    $raw_phone = rgar( $entry, $fields_map['phone'] );
+
+    // اصلاح نام
+    $parts = explode( ' ', trim( $full_name ), 2 );
+    $first_name = $parts[0];
+    $last_name  = isset( $parts[1] ) ? $parts[1] : '';
+
+    // اصلاح شماره موبایل (حذف صفر اول)
+    $phone = ltrim( $raw_phone, '0' );
+
+    // 3. پیدا کردن محصول
+    // ابتدا سعی میکنیم از post_id خود گرویتی استفاده کنیم
+    $product_id = rgar( $entry, 'post_id' );
+    
+    // اگر گرویتی post_id رو ذخیره نکرده بود، از url درمیاریم
+    if ( empty( $product_id ) ) {
+        $product_id = url_to_postid( $entry['source_url'] );
+    }
+
+    if ( ! $product_id ) return;
+
+    $product = wc_get_product( $product_id );
+    $item_id_to_add = $product_id; // پیش‌فرض برای محصولات ساده
+
+    // 4. لاجیک تشخیص محصول متغیر (دقیق با اسلاگ)
+    if ( $product->is_type( 'variable' ) ) {
+        
+        $variations = $product->get_available_variations();
+        
+        foreach ( $variations as $variation ) {
+            // ویژگی‌های وریشن رو میگیریم (که شامل اسلاگ‌هاست)
+            // خروجی attributes یه آرایه است مثل: ['attribute_pa_type' => 'online-course']
+            
+            // چک میکنیم آیا اسلاگ مد نظر ما توی مقادیر ویژگی‌های این وریشن هست یا نه
+            if ( in_array( $target_slug, $variation['attributes'] ) ) {
+                $item_id_to_add = $variation['variation_id'];
+                break; // پیدا شد، حلقه رو بشکن
+            }
+        }
+    }
+
+    // 5. ایجاد سفارش ووکامرس
+    if ( $item_id_to_add ) {
+        
+        $order = wc_create_order();
+        
+        // افزودن محصول
+        $order->add_product( wc_get_product( $item_id_to_add ), 1 );
+        
+        // آدرس صورتحساب
+        $address = array(
+            'first_name' => $first_name,
+            'last_name'  => $last_name,
+            'phone'      => $phone,
+        );
+        $order->set_address( $address, 'billing' );
+        
+        // متادیتای پرداخت
+        $order->set_payment_method( 'Gravity Forms Direct' );
+        $order->set_payment_method_title( 'پرداخت سریع (آکادمی کارنو)' );
+        
+        $order->calculate_totals();
+        
+        // تکمیل سفارش
+        $order->update_status( 'completed', 'سفارش ثبت شده توسط فرم شماره ' . $current_form_id . ' - شناسه تراکنش: ' . rgar($entry, 'transaction_id') );
+        $order->save();
+    }
+}
