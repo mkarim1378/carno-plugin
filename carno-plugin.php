@@ -2164,6 +2164,141 @@ function carno_create_wc_order_after_payment_v2( $entry, $action ) {
         
         // تکمیل سفارش
         $order->update_status( 'completed', 'سفارش ثبت شده توسط فرم شماره ' . $current_form_id . ' - شناسه تراکنش: ' . rgar($entry, 'transaction_id') );
+        
         $order->save();
     }
 }
+// ===========================================================================
+// تخفیف همیشگی
+// فیلتر کردن قیمت محصول در سمت کاربر
+add_filter('woocommerce_product_get_price', 'karno_dynamic_fixed_price', 99, 2);
+add_filter('woocommerce_product_variation_get_price', 'karno_dynamic_fixed_price', 99, 2);
+function karno_dynamic_fixed_price($price, $product) {
+    if (is_admin()) return $price;
+    date_default_timezone_set('Asia/Tehran');
+    $current_hour = (int)date('G');
+    // بازه ساعت ۱۶ تا ۱۷ (ساعتی که تخفیف باید برداشته شود)
+    if ($current_hour == 16) {
+        return $product->get_regular_price();
+    }
+    return $price;
+}
+// غیرفعال کردن لیبل "حراج" در ساعت ۱۶ الی ۱۷
+add_filter('woocommerce_product_is_on_sale', 'karno_hide_sale_flash', 99, 2);
+function karno_hide_sale_flash($is_on_sale, $product) {
+    date_default_timezone_set('Asia/Tehran');
+    $current_hour = (int)date('G');
+    if ($current_hour == 16) {
+        return false;
+    }
+    return $is_on_sale;
+}
+// مخفی کردن ویجت تایمر در ساعت ۱۶ الی ۱۷
+add_action('wp_head', 'karno_hide_timer_css');
+function karno_hide_timer_css() {
+    date_default_timezone_set('Asia/Tehran');
+    $current_hour = (int)date('G');
+    if ($current_hour == 16) {
+        echo '<style>.daily-timer { display: none !important; }</style>';
+    }
+}
+
+<?php
+/**
+ * CARNO – QR Code Discount System
+ * Single scenario | Array-based prices | 30 minutes session
+ */
+
+/* ================================
+ * 1. تنظیم قیمت QR برای هر محصول
+ * ================================ */
+function carno_qr_prices() {
+    return [
+        1234 => 4900000, // product_id => qr_price
+        5678 => 3900000,
+        9012 => 5900000,
+    ];
+}
+
+/* ======================================
+ * 2. فعال‌سازی تخفیف فقط با UTM معتبر
+ * ====================================== */
+add_action('init', function () {
+
+    if (
+        isset($_GET['utm_source'], $_GET['utm_medium'], $_GET['utm_campaign']) &&
+        $_GET['utm_source'] === 'book' &&
+        $_GET['utm_medium'] === 'qr' &&
+        $_GET['utm_campaign'] === 'carno'
+    ) {
+        setcookie(
+            'carno_qr_discount',
+            time(),                 // زمان شروع
+            time() + (30 * 60),     // ۳۰ دقیقه
+            '/',
+            '',
+            false,
+            true
+        );
+    }
+
+});
+
+/* =========================================
+ * 3. اعمال قیمت QR فقط در بازه معتبر
+ * ========================================= */
+add_filter('woocommerce_product_get_price', 'carno_apply_qr_price', 10, 2);
+add_filter('woocommerce_product_get_regular_price', 'carno_apply_qr_price', 10, 2);
+
+function carno_apply_qr_price($price, $product) {
+
+    if (!isset($_COOKIE['carno_qr_discount'])) {
+        return $price;
+    }
+
+    // اگر ۳۰ دقیقه گذشته باشه
+    if ((time() - intval($_COOKIE['carno_qr_discount'])) > (30 * 60)) {
+        return $price;
+    }
+
+    $prices = carno_qr_prices();
+
+    // هندل محصول متغیر
+    $product_id = $product->get_parent_id() ?: $product->get_id();
+
+    if (isset($prices[$product_id])) {
+        return $prices[$product_id];
+    }
+
+    return $price;
+}
+
+/* =========================================
+ * 4. اصلاح قیمت سبد خرید بعد از انقضا
+ * ========================================= */
+add_action('woocommerce_before_calculate_totals', function ($cart) {
+
+    if (is_admin() && !defined('DOING_AJAX')) return;
+
+    if (!isset($_COOKIE['carno_qr_discount'])) return;
+
+    if ((time() - intval($_COOKIE['carno_qr_discount'])) > (30 * 60)) {
+        foreach ($cart->get_cart() as $cart_item) {
+            $product = $cart_item['data'];
+            $product->set_price($product->get_regular_price());
+        }
+    }
+});
+
+/* =========================================
+ * 5. Alert اطلاع‌رسانی تخفیف QR
+ * ========================================= */
+add_action('wp_footer', function () {
+    if (!isset($_COOKIE['carno_qr_discount'])) return;
+    if ((time() - intval($_COOKIE['carno_qr_discount'])) > (30 * 60)) return;
+?>
+<script>
+alert("🎉 تبریک!\n\nشما از طریق QR کد داخل کتاب‌های آموزشی کارنو وارد این صفحه شدید و این محصول با «بیشترین تخفیف اختصاصی» فقط برای شما فعال شده.\n\n⏰ این تخفیف فقط تا ۳۰ دقیقه معتبره.");
+</script>
+<?php
+});
