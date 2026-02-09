@@ -1447,27 +1447,30 @@ function auto_complete_all_orders( $order_id ) {
 
 // ============================================================================
 // تخفیف پکیج زبان فنی
-add_action( 'woocommerce_cart_calculate_fees', 'custom_package_discount', 20, 1 );
-function custom_package_discount( $cart ) {
+add_action( 'woocommerce_cart_calculate_fees', 'custom_package_fixed_price', 20, 1 );
+function custom_package_fixed_price( $cart ) {
     if ( is_admin() && ! defined( 'DOING_AJAX' ) ) return;
 
-    // آیدی محصولات مورد نظر
     $required_products = array( 16180, 13534 );
     $found_products = array();
+    $package_total = 0;
+    $final_price = 5000000;
 
-    // بررسی محصولات داخل سبد خرید
     foreach ( $cart->get_cart() as $cart_item ) {
         if ( in_array( $cart_item['product_id'], $required_products ) ) {
             $found_products[] = $cart_item['product_id'];
+            $package_total += $cart_item['line_total'];
         }
     }
 
-    // اگر هر دو محصول توی سبد باشن، تخفیف اعمال بشه
-    if ( count( array_unique($found_products) ) === count($required_products) ) {
-        $discount_amount = 1320000; // مبلغ تخفیف به تومان
-        $cart->add_fee( 'تخفیف پکیج زبان فنی', -$discount_amount );
+    if ( count( array_unique( $found_products ) ) === count( $required_products ) ) {
+        $discount = $package_total - $final_price;
+        if ( $discount > 0 ) {
+            $cart->add_fee( 'تخفیف پکیج زبان فنی', -$discount );
+        }
     }
 }
+
 
 // ============================================================================
 // پاک‌سازی کش هنگام تغییرات مهم
@@ -1728,12 +1731,19 @@ add_filter('wp_default_scripts', function($scripts) {
  */
 function get_sepehr_final_prices() {
     return array(
+        // آنلاین کره ای
         41078 => 9800000, 
+        // آنلاین چینی
         38427 => 9800000, 
-        18535 => 7500000, 
+        // داخلی
+        18535 => 7500000,
+        // زبان فنی
         16180 => 3800000, 
+        // GDS
         13928 => 3800000, 
+        // کتاب
         13534 => 1900000, 
+        // فرمان برقی
         41462 => 9800000,
     );
 }
@@ -2227,8 +2237,7 @@ add_action('init', function () {
     if (
         isset($_GET['utm_source'], $_GET['utm_medium'], $_GET['utm_campaign']) &&
         $_GET['utm_source'] === 'book' &&
-        $_GET['utm_medium'] === 'qr' &&
-        $_GET['utm_campaign'] === 'carno'
+        $_GET['utm_medium'] === 'qrs' &&
     ) {
         setcookie(
             'carno_qr_discount',
