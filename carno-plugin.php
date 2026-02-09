@@ -2203,7 +2203,6 @@ function karno_hide_timer_css() {
     }
 }
 
-<?php
 /**
  * CARNO – QR Code Discount System
  * Single scenario | Array-based prices | 30 minutes session
@@ -2264,7 +2263,7 @@ function carno_apply_qr_price($price, $product) {
     $prices = carno_qr_prices();
 
     // هندل محصول متغیر
-    $product_id = $product->get_parent_id() ?: $product->get_id();
+    $product_id = $product->get_id();
 
     if (isset($prices[$product_id])) {
         return $prices[$product_id];
@@ -2279,22 +2278,23 @@ function carno_apply_qr_price($price, $product) {
 add_action('woocommerce_before_calculate_totals', function ($cart) {
 
     if (is_admin() && !defined('DOING_AJAX')) return;
-
     if (!isset($_COOKIE['carno_qr_discount'])) return;
-
     if ((time() - intval($_COOKIE['carno_qr_discount'])) > (30 * 60)) {
         foreach ($cart->get_cart() as $cart_item) {
             $product = $cart_item['data'];
             $product->set_price($product->get_regular_price());
         }
     }
+
 });
 
 /* =========================================
  * 5. Alert اطلاع‌رسانی تخفیف QR
  * ========================================= */
 add_action('wp_footer', function () {
+
     if (!isset($_COOKIE['carno_qr_discount'])) return;
+
     if ((time() - intval($_COOKIE['carno_qr_discount'])) > (30 * 60)) return;
 ?>
 <script>
