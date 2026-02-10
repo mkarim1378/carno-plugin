@@ -2018,62 +2018,61 @@ document.addEventListener("DOMContentLoaded", function () {
 
 // قیمت داینامیک برای فرم محصول تو لندینگ ریدیزاین 1404
 // 1. پر کردن قیمت آنلاین (carno_online)
-add_filter( 'gform_field_value_carno_online', 'populate_online_price' );
-function populate_online_price( $value ) {
-    if ( ! class_exists( 'WooCommerce' ) || ! is_product() ) return $value;
+// جایگزین هر دو تابع قبلی (آنلاین و حضوری) برای اعمال تخفیف ویژه
+function carno_get_dynamic_price($product, $type_slugs) {
+    $special_prices = carno_get_special_prices(); // همون آرایه‌ای که قبلاً ساختیم
+    $has_discount = isset($_COOKIE['carno_book_discount']);
 
-    $product = wc_get_product( get_the_ID() );
-
-    // سناریو الف: محصول ساده است (همون قیمت اصلی رو برگردون)
-    if ( $product->is_type( 'simple' ) ) {
-        return $product->get_price();
+    if ($product->is_type('simple')) {
+        $p_id = $product->get_id();
+        return ($has_discount && isset($special_prices[$p_id])) ? $special_prices[$p_id] : $product->get_price();
     }
 
-    // سناریو ب: محصول متغیر است (دنبال وریشن آنلاین بگرد)
-    if ( $product->is_type( 'variable' ) ) {
+    if ($product->is_type('variable')) {
         $variations = $product->get_available_variations();
-        foreach ( $variations as $variation ) {
-            // چک میکنیم توی ویژگی‌های این وریشن کلمه "آنلاین" یا "online" هست یا نه
-            $attributes_str = implode( ' ', $variation['attributes'] );
-            if ( strpos( $attributes_str, 'آنلاین' ) !== false || strpos( $attributes_str, 'online' ) !== false ) {
-                return $variation['display_price'];
+        foreach ($variations as $variation) {
+            $attributes_str = implode(' ', $variation['attributes']);
+            $match = false;
+            foreach ($type_slugs as $slug) {
+                if (strpos($attributes_str, $slug) !== false) { $match = true; break; }
+            }
+
+            if ($match) {
+                $v_id = $variation['variation_id'];
+                return ($has_discount && isset($special_prices[$v_id])) ? $special_prices[$v_id] : $variation['display_price'];
             }
         }
     }
-    return $value;
+    return '';
 }
 
-// 2. پر کردن قیمت حضوری (carno_offline)
-add_filter( 'gform_field_value_carno_offline', 'populate_offline_price' );
-function populate_offline_price( $value ) {
-    if ( ! class_exists( 'WooCommerce' ) || ! is_product() ) return $value;
+add_filter('gform_field_value_carno_online', function($value) {
+    if (!class_exists('WooCommerce') || !is_product()) return $value;
+    return carno_get_dynamic_price(wc_get_product(get_the_ID()), ['آنلاین', 'online', 'online-course']);
+});
 
-    $product = wc_get_product( get_the_ID() );
+add_filter('gform_field_value_carno_offline', function($value) {
+    if (!class_exists('WooCommerce') || !is_product()) return $value;
+    return carno_get_dynamic_price(wc_get_product(get_the_ID()), ['حضوری', 'offline', 'onsite-course']);
+});
 
-    // محصول ساده معمولا حضوری نداره (طبق سناریوی تو)، پس خالی برگردون یا صفر
-    if ( $product->is_type( 'simple' ) ) {
-        return ''; 
+add_filter('gform_form_tag', 'carno_add_discount_badge_to_form', 10, 2);
+function carno_add_discount_badge_to_form($form_tag, $form) {
+    // فقط برای فرم‌های آنلاین (43) و حضوری (42) و در صورت وجود کوکی
+    if (in_array($form['id'], [42, 43]) && isset($_COOKIE['carno_book_discount'])) {
+        $badge_html = '
+        <div style="background: #ebffef; border: 1px solid #28a745; color: #155724; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: center; font-weight: bold;">
+            🎁 هدیه وفاداری آکادمی Carno فعال شد!<br>
+            <span style="font-size: 0.9em; font-weight: normal;">به پاس همراهی شما با کتاب، <span style="color: #d63384; font-weight: bold;">«بیشترین تخفیف اختصاصی»</span> روی قیمت این دوره برای شما اعمال شد.</span>
+        </div>';
+        $form_tag .= $badge_html;
     }
-
-    // محصول متغیر: دنبال وریشن حضوری بگرد
-    if ( $product->is_type( 'variable' ) ) {
-        $variations = $product->get_available_variations();
-        foreach ( $variations as $variation ) {
-            // چک میکنیم توی ویژگی‌های این وریشن کلمه "حضوری" یا "offline" هست یا نه
-            $attributes_str = implode( ' ', $variation['attributes'] );
-            if ( strpos( $attributes_str, 'حضوری' ) !== false || strpos( $attributes_str, 'onsite-course' ) !== false ) {
-                return $variation['display_price'];
-            }
-        }
-    }
-    return $value;
+    return $form_tag;
 }
 
 add_action( 'gform_post_payment_completed', 'carno_create_wc_order_after_payment_v2', 10, 2 );
 
 function carno_create_wc_order_after_payment_v2( $entry, $action ) {
-
-    // ---------------- تنظیمات دقیق (بر اساس گفته‌های تو) ----------------
 
     $online_form_id  = 43; // آیدی فرم آنلاین
     $onsite_form_id  = 42; // آیدی فرم حضوری
@@ -2156,7 +2155,15 @@ function carno_create_wc_order_after_payment_v2( $entry, $action ) {
         $order = wc_create_order();
         
         // افزودن محصول
-        $order->add_product( wc_get_product( $item_id_to_add ), 1 );
+        $order_item_id = $order->add_product( wc_get_product( $item_id_to_add ), 1 );
+$item = $order->get_item( $order_item_id );
+// دریافت قیمتی که واقعاً کاربر پرداخت کرده از ورودی فرم گرویتی
+$paid_amount = rgar( $entry, '2.2' ); // نکته: آیدی فیلد قیمت رو اینجا جایگزین کن (مثلاً 2)
+if($paid_amount) {
+    $item->set_subtotal( $paid_amount );
+    $item->set_total( $paid_amount );
+    $item->save();
+}
         
         // آدرس صورتحساب
         $address = array(
