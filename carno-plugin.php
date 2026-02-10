@@ -2078,16 +2078,18 @@ function carno_create_wc_order_after_payment_v2( $entry, $action ) {
     $onsite_form_id  = 42; // آیدی فرم حضوری
 
     // نقشه فیلدها برای فرم آنلاین (ID 43)
-    $online_fields = array(
-        'name'  => 9,
-        'phone' => 8
-    );
+$online_fields = array(
+    'name'    => 9,
+    'phone'   => 8,
+    'product' => 15 // آیدی فیلد محصول در فرم آنلاین را اینجا بنویس
+);
 
-    // نقشه فیلدها برای فرم حضوری (ID 42)
-    $onsite_fields = array(
-        'name'  => 9,
-        'phone' => 8
-    );
+// نقشه فیلدها برای فرم حضوری (ID 42)
+$onsite_fields = array(
+    'name'    => 9,
+    'phone'   => 8,
+    'product' => 12 // آیدی فیلد محصول در فرم حضوری را اینجا بنویس
+);
 
     // ------------------------------------------------------------------
 
@@ -2159,16 +2161,9 @@ function carno_create_wc_order_after_payment_v2( $entry, $action ) {
 $item = $order->get_item( $order_item_id );
 // دریافت قیمتی که واقعاً کاربر پرداخت کرده از ورودی فرم گرویتی
 $paid_amount = 0;
-foreach ( $entry as $key => $value ) {
-    // می‌گرده دنبال فیلدی که ماهیتش قیمته
-    if ( strpos( $key, '.' ) !== false && is_numeric( $value ) ) {
-        $field = GFAPI::get_field( $entry['form_id'], (int) $key );
-        if ( $field && $field->type == 'product' ) {
-            $paid_amount = $value;
-            break; 
-        }
-    }
-}
+$product_field_id = $fields_map['product'] . '.2'; 
+$paid_amount = floatval( rgar( $entry, $product_field_id ) );
+
 if ( $paid_amount > 0 ) {
     $item->set_subtotal( $paid_amount );
     $item->set_total( $paid_amount );
