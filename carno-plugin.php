@@ -2193,9 +2193,9 @@ if ( $paid_amount > 0 ) {
 // ===========================================================================
 // تخفیف همیشگی
 // فیلتر کردن قیمت محصول در سمت کاربر
-add_filter('woocommerce_product_get_price', 'karno_dynamic_fixed_price', 99, 2);
-add_filter('woocommerce_product_variation_get_price', 'karno_dynamic_fixed_price', 99, 2);
-function karno_dynamic_fixed_price($price, $product) {
+add_filter('woocommerce_product_get_price', 'carno_dynamic_fixed_price', 99, 2);
+add_filter('woocommerce_product_variation_get_price', 'carno_dynamic_fixed_price', 99, 2);
+function carno_dynamic_fixed_price($price, $product) {
     if (is_admin()) return $price;
     date_default_timezone_set('Asia/Tehran');
     $current_hour = (int)date('G');
@@ -2206,8 +2206,8 @@ function karno_dynamic_fixed_price($price, $product) {
     return $price;
 }
 // غیرفعال کردن لیبل "حراج" در ساعت ۱۶ الی ۱۷
-add_filter('woocommerce_product_is_on_sale', 'karno_hide_sale_flash', 99, 2);
-function karno_hide_sale_flash($is_on_sale, $product) {
+add_filter('woocommerce_product_is_on_sale', 'carno_hide_sale_flash', 99, 2);
+function carno_hide_sale_flash($is_on_sale, $product) {
     date_default_timezone_set('Asia/Tehran');
     $current_hour = (int)date('G');
     if ($current_hour == 16) {
@@ -2216,8 +2216,8 @@ function karno_hide_sale_flash($is_on_sale, $product) {
     return $is_on_sale;
 }
 // مخفی کردن ویجت تایمر در ساعت ۱۶ الی ۱۷
-add_action('wp_head', 'karno_hide_timer_css');
-function karno_hide_timer_css() {
+add_action('wp_head', 'carno_hide_timer_css');
+function carno_hide_timer_css() {
     date_default_timezone_set('Asia/Tehran');
     $current_hour = (int)date('G');
     if ($current_hour == 16) {
