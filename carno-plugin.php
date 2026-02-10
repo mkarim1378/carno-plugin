@@ -2250,35 +2250,32 @@ function carno_get_special_prices() {
     );
 }
 
-// ۲. بررسی پارامتر UTM و ست کردن کوکی ۳۰ دقیقه‌ای
+// ۲. بررسی پارامتر UTM و ست کردن کوکی ۳۰ دقیقه‌ای با ریدایرکت آنی
 add_action('init', 'carno_check_qr_param');
 function carno_check_qr_param() {
-    if (isset($_GET['utm_source']) && $_GET['utm_source'] === 'book') {
-        // ست کردن کوکی برای ۱۸۰۰ ثانیه (۳۰ دقیقه)
+    if (isset($_GET['utm_source']) && $_GET['utm_source'] === 'book_qr') {
+        // ست کردن کوکی
         setcookie('carno_book_discount', 'active', time() + 1800, COOKIEPATH, COOKIE_DOMAIN);
         
-        // ریلود صفحه برای پاک شدن UTM از ظاهر URL (اختیاری ولی تمیزتره)
-        if (isset($_GET['apply_discount'])) {
-             wp_redirect(remove_query_arg('utm_source'));
-             exit;
-        }
+        // ریدایرکت آنی برای اینکه در همین لود اول، کوکی توسط سیستم شناخته بشه
+        $clean_url = remove_query_arg('utm_source');
+        wp_safe_redirect($clean_url);
+        exit;
     }
 }
 
-// ۳. تغییر قیمت در کل سایت (برای محصولات ساده و متغیر)
-add_filter('woocommerce_product_get_price', 'carno_apply_custom_price', 99, 2);
-add_filter('woocommerce_product_variation_get_price', 'carno_apply_custom_price', 99, 2);
-
+// ۳. تغییر قیمت (اصلاح شده برای پایداری در گرویتی فرم)
 function carno_apply_custom_price($price, $product) {
-    // اگر کوکی فعال نبود، قیمت اصلی رو برگردون
-    if (!isset($_COOKIE['carno_book_discount'])) {
+    // چک کردن هر دو مورد: یا کوکی باشه یا پارامتر ورودی (برای پایداری در لحظه سابمیت)
+    $is_qr_user = isset($_COOKIE['carno_book_discount']) || (isset($_GET['utm_source']) && $_GET['utm_source'] === 'book_qr');
+    
+    if (!$is_qr_user) {
         return $price;
     }
 
     $special_prices = carno_get_special_prices();
     $product_id = $product->get_id();
 
-    // اگر آی‌دی محصول در لیست ما بود، قیمت جدید رو جایگزین کن
     if (array_key_exists($product_id, $special_prices)) {
         return $special_prices[$product_id];
     }
