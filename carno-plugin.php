@@ -2249,27 +2249,32 @@ function carno_get_special_prices() {
         41462 => 9800000,
     );
 }
+// ۲. بررسی پارامتر یا کوکی برای فعال بودن تخفیف
+function carno_is_discount_active() {
+    // چک کردن کوکی یا پارامتر مستقیم در آدرس
+    if (isset($_COOKIE['carno_book_discount']) || (isset($_GET['utm_source']) && $_GET['utm_source'] === 'book_qr')) {
+        return true;
+    }
+    return false;
+}
 
-// ۲. بررسی پارامتر UTM و ست کردن کوکی ۳۰ دقیقه‌ای با ریدایرکت آنی
-add_action('init', 'carno_check_qr_param');
-function carno_check_qr_param() {
+// ۳. ست کردن کوکی (بدون ریدایرکت)
+add_action('init', 'carno_set_discount_cookie_logic');
+function carno_set_discount_cookie_logic() {
     if (isset($_GET['utm_source']) && $_GET['utm_source'] === 'book_qr') {
-        // ست کردن کوکی
-        setcookie('carno_book_discount', 'active', time() + 1800, COOKIEPATH, COOKIE_DOMAIN);
-        
-        // ریدایرکت آنی برای اینکه در همین لود اول، کوکی توسط سیستم شناخته بشه
-        $clean_url = remove_query_arg('utm_source');
-        wp_safe_redirect($clean_url);
-        exit;
+        // ست کردن کوکی برای ۳۰ دقیقه (بدون رفرش اجباری)
+        if (!isset($_COOKIE['carno_book_discount'])) {
+            setcookie('carno_book_discount', 'active', time() + 1800, COOKIEPATH, COOKIE_DOMAIN);
+        }
     }
 }
 
-// ۳. تغییر قیمت (اصلاح شده برای پایداری در گرویتی فرم)
+// ۴. فیلتر تغییر قیمت محصولات (ساده و متغیر)
+add_filter('woocommerce_product_get_price', 'carno_apply_custom_price', 99, 2);
+add_filter('woocommerce_product_variation_get_price', 'carno_apply_custom_price', 99, 2);
+
 function carno_apply_custom_price($price, $product) {
-    // چک کردن هر دو مورد: یا کوکی باشه یا پارامتر ورودی (برای پایداری در لحظه سابمیت)
-    $is_qr_user = isset($_COOKIE['carno_book_discount']) || (isset($_GET['utm_source']) && $_GET['utm_source'] === 'book_qr');
-    
-    if (!$is_qr_user) {
+    if (!carno_is_discount_active()) {
         return $price;
     }
 
@@ -2283,15 +2288,13 @@ function carno_apply_custom_price($price, $product) {
     return $price;
 }
 
-// ۴. نمایش آلرت اطلاع‌رسانی به کاربر
+// ۵. اصلاح نمایش آلرت (سازگار با لود اول)
 add_action('wp_footer', 'carno_show_discount_alert');
 function carno_show_discount_alert() {
-    // فقط در صفحه محصول و در صورت وجود کوکی نمایش داده شود
-    if (is_product() && isset($_COOKIE['carno_book_discount'])) {
+    if (is_product() && carno_is_discount_active()) {
         ?>
         <script>
             (function() {
-                // جلوگیری از نمایش تکراری آلرت در هر بار رفرش (اختیاری)
                 if (!sessionStorage.getItem('carno_alert_shown')) {
                     alert("تبریک! چون شما از همراهان کتاب آکادمی Carno هستید، «بیشترین تخفیف» ممکن به صورت خودکار برای شما اعمال شد. این فرصت فقط تا ۳۰ دقیقه دیگر معتبر است.");
                     sessionStorage.setItem('carno_alert_shown', 'true');
