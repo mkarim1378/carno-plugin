@@ -2158,8 +2158,18 @@ function carno_create_wc_order_after_payment_v2( $entry, $action ) {
         $order_item_id = $order->add_product( wc_get_product( $item_id_to_add ), 1 );
 $item = $order->get_item( $order_item_id );
 // دریافت قیمتی که واقعاً کاربر پرداخت کرده از ورودی فرم گرویتی
-$paid_amount = rgar( $entry, '2.2' ); // نکته: آیدی فیلد قیمت رو اینجا جایگزین کن (مثلاً 2)
-if($paid_amount) {
+$paid_amount = 0;
+foreach ( $entry as $key => $value ) {
+    // می‌گرده دنبال فیلدی که ماهیتش قیمته
+    if ( strpos( $key, '.' ) !== false && is_numeric( $value ) ) {
+        $field = GFAPI::get_field( $entry['form_id'], (int) $key );
+        if ( $field && $field->type == 'product' ) {
+            $paid_amount = $value;
+            break; 
+        }
+    }
+}
+if ( $paid_amount > 0 ) {
     $item->set_subtotal( $paid_amount );
     $item->set_total( $paid_amount );
     $item->save();
