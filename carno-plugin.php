@@ -2262,9 +2262,11 @@ function carno_is_discount_active() {
 add_action('init', 'carno_set_discount_cookie_logic');
 function carno_set_discount_cookie_logic() {
     if (isset($_GET['utm_source']) && $_GET['utm_source'] === 'book_qr') {
-        // ست کردن کوکی برای ۳۰ دقیقه (بدون رفرش اجباری)
         if (!isset($_COOKIE['carno_book_discount'])) {
+            // ست کردن برای مرورگر
             setcookie('carno_book_discount', 'active', time() + 1800, COOKIEPATH, COOKIE_DOMAIN);
+            // ست کردن برای همین درخواست جاری (تا قیمت‌ها در همین لود هم عوض شوند)
+            $_COOKIE['carno_book_discount'] = 'active';
         }
     }
 }
@@ -2288,19 +2290,22 @@ function carno_apply_custom_price($price, $product) {
     return $price;
 }
 
-// ۵. اصلاح نمایش آلرت (سازگار با لود اول)
-add_action('wp_footer', 'carno_show_discount_alert');
-function carno_show_discount_alert() {
-    if (is_product() && carno_is_discount_active()) {
-        ?>
-        <script>
-            (function() {
-                if (!sessionStorage.getItem('carno_alert_shown')) {
-                    alert("تبریک! چون شما از همراهان کتاب آکادمی Carno هستید، «بیشترین تخفیف» ممکن به صورت خودکار برای شما اعمال شد. این فرصت فقط تا ۳۰ دقیقه دیگر معتبر است.");
-                    sessionStorage.setItem('carno_alert_shown', 'true');
-                }
-            })();
-        </script>
-        <?php
+// اضافه کردن بنر به فرم‌های گرویتی (با پشتیبانی از لود ایجکسی)
+add_filter('gform_get_form_filter', 'carno_add_discount_badge_logic', 10, 2);
+function carno_add_discount_badge_logic($form_string, $form) {
+    // فقط برای فرم‌های هدف (۴۲ و ۴۳)
+    if (!in_array($form['id'], [42, 43])) return $form_string;
+
+    // اگر تخفیف فعال بود (چه با کوکی چه با UTM)
+    if (carno_is_discount_active()) {
+        $badge_html = '
+        <div class="carno-qr-notice" style="background: #ebffef; border: 1px solid #28a745; color: #155724; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: center; font-weight: bold;">
+            🎁 هدیه وفاداری آکادمی Carno فعال شد!<br>
+            <span style="font-size: 0.9em; font-weight: normal;">به پاس همراهی شما با کتاب، <span style="color: #d63384; font-weight: bold;">«بیشترین تخفیف اختصاصی»</span> برای شما اعمال شد.</span>
+        </div>';
+        
+        // تزریق بنر به ابتدای فرم
+        return $badge_html . $form_string;
     }
+    return $form_string;
 }
