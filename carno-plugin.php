@@ -2251,8 +2251,8 @@ function carno_get_special_prices() {
 }
 // ۲. بررسی پارامتر یا کوکی برای فعال بودن تخفیف
 function carno_is_discount_active() {
-    // چک کردن کوکی یا پارامتر مستقیم در آدرس
-    if (isset($_COOKIE['carno_book_discount']) || (isset($_GET['utm_source']) && $_GET['utm_source'] === 'book_qr')) {
+    // باید نام کوکی با تابعی که ست می‌کند یکی باشد
+    if (isset($_COOKIE['carno_book_ids']) || (isset($_GET['utm_source']) && $_GET['utm_source'] === 'book_qr')) {
         return true;
     }
     return false;
@@ -2262,50 +2262,72 @@ function carno_is_discount_active() {
 add_action('init', 'carno_set_discount_cookie_logic');
 function carno_set_discount_cookie_logic() {
     if (isset($_GET['utm_source']) && $_GET['utm_source'] === 'book_qr') {
-        if (!isset($_COOKIE['carno_book_discount'])) {
-            // ست کردن برای مرورگر
-            setcookie('carno_book_discount', 'active', time() + 1800, COOKIEPATH, COOKIE_DOMAIN);
-            // ست کردن برای همین درخواست جاری (تا قیمت‌ها در همین لود هم عوض شوند)
-            $_COOKIE['carno_book_discount'] = 'active';
+        $product_id = url_to_postid(home_url($_SERVER['REQUEST_URI']));
+        
+        if ($product_id) {
+            // خواندن آی‌دی‌های قبلی از کوکی
+            $saved_ids = isset($_COOKIE['carno_book_ids']) ? explode(',', $_COOKIE['carno_book_ids']) : array();
+            
+            // اضافه کردن آی‌دی جدید اگر قبلاً در لیست نبود
+            if (!in_array($product_id, $saved_ids)) {
+                $saved_ids[] = $product_id;
+            }
+            
+            $updated_ids = implode(',', $saved_ids);
+            
+            // ذخیره لیست به‌روز شده (تا ۳۰ دقیقه)
+            setcookie('carno_book_ids', $updated_ids, time() + 1800, COOKIEPATH, COOKIE_DOMAIN);
+            $_COOKIE['carno_book_ids'] = $updated_ids; 
         }
     }
 }
 
+function carno_is_item_discounted($product_id) {
+    if (isset($_GET['utm_source']) && $_GET['utm_source'] === 'book_qr') {
+        $current_url_id = url_to_postid(home_url($_SERVER['REQUEST_URI']));
+        if ((int)$current_url_id === (int)$product_id) return true;
+    }
+    
+    if (!isset($_COOKIE['carno_book_ids'])) return false;
+    $allowed_ids = explode(',', $_COOKIE['carno_book_ids']);
+    return in_array((string)$product_id, $allowed_ids);
+}
+
 // ۴. فیلتر تغییر قیمت محصولات (ساده و متغیر)
-add_filter('woocommerce_product_get_price', 'carno_apply_custom_price', 99, 2);
-add_filter('woocommerce_product_variation_get_price', 'carno_apply_custom_price', 99, 2);
+add_filter('woocommerce_product_get_price', 'carno_final_price_logic', 999, 2);
+add_filter('woocommerce_product_variation_get_price', 'carno_final_price_logic', 999, 2);
+add_filter('woocommerce_product_get_sale_price', 'carno_final_price_logic', 999, 2);
 
-function carno_apply_custom_price($price, $product) {
-    if (!carno_is_discount_active()) {
-        return $price;
+function carno_final_price_logic($price, $product) {
+    $p_id = $product->get_id();
+    if (carno_is_item_discounted($p_id)) {
+        $special_prices = carno_get_special_prices();
+        if (array_key_exists($p_id, $special_prices)) {
+            return $special_prices[$p_id]; 
+        }
     }
-
-    $special_prices = carno_get_special_prices();
-    $product_id = $product->get_id();
-
-    if (array_key_exists($product_id, $special_prices)) {
-        return $special_prices[$product_id];
-    }
-
     return $price;
 }
 
-// اضافه کردن بنر به فرم‌های گرویتی (با پشتیبانی از لود ایجکسی)
-add_filter('gform_get_form_filter', 'carno_add_discount_badge_logic', 10, 2);
-function carno_add_discount_badge_logic($form_string, $form) {
-    // فقط برای فرم‌های هدف (۴۲ و ۴۳)
-    if (!in_array($form['id'], [42, 43])) return $form_string;
+// اجبار به نمایش قیمت خط خورده
+add_filter('woocommerce_product_is_on_sale', 'carno_force_sale_ui', 999, 2);
+function carno_force_sale_ui($is_on_sale, $product) {
+    return carno_is_item_discounted($product->get_id()) ? true : $is_on_sale;
+}
 
-    // اگر تخفیف فعال بود (چه با کوکی چه با UTM)
-    if (carno_is_discount_active()) {
-        $badge_html = '
-        <div class="carno-qr-notice" style="background: #ebffef; border: 1px solid #28a745; color: #155724; padding: 15px; border-radius: 8px; margin-bottom: 20px; text-align: center; font-weight: bold;">
-            🎁 هدیه وفاداری آکادمی Carno فعال شد!<br>
-            <span style="font-size: 0.9em; font-weight: normal;">به پاس همراهی شما با کتاب، <span style="color: #d63384; font-weight: bold;">«بیشترین تخفیف اختصاصی»</span> برای شما اعمال شد.</span>
-        </div>';
-        
-        // تزریق بنر به ابتدای فرم
-        return $badge_html . $form_string;
+// ۵. اصلاح نمایش آلرت (سازگار با لود اول)
+add_action('wp_footer', 'carno_show_discount_alert');
+function carno_show_discount_alert() {
+    if (is_product() && carno_is_discount_active()) {
+        ?>
+        <script>
+            (function() {
+                if (!sessionStorage.getItem('carno_alert_shown')) {
+                    alert("تبریک! چون شما از همراهان کتاب آکادمی Carno هستید، «بیشترین تخفیف» ممکن به صورت خودکار برای شما اعمال شد. این فرصت فقط تا ۳۰ دقیقه دیگر معتبر است.");
+                    sessionStorage.setItem('carno_alert_shown', 'true');
+                }
+            })();
+        </script>
+        <?php
     }
-    return $form_string;
 }
