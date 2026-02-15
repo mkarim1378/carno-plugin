@@ -2247,6 +2247,8 @@ function carno_get_special_prices() {
         13534 => 1900000, 
         // فرمان برقی
         41462 => 9800000,
+        // همایش زنجان
+        42096 => 1900000,
     );
 }
 // ۲. بررسی پارامتر یا کوکی برای فعال بودن تخفیف
@@ -2330,4 +2332,19 @@ function carno_show_discount_alert() {
         </script>
         <?php
     }
+}
+
+// ===========================================================================
+// کلمه رایگان به جای قیمت 0 تومان
+// ===========================================================================
+add_filter( 'woocommerce_get_price_html', 'carno_show_free_when_zero_price', 10, 2 );
+function carno_show_free_when_zero_price( $price, $product ) {
+
+    $regular_price = $product->get_regular_price();
+
+    if ( $regular_price !== '' && floatval($regular_price) === 0.0 ) {
+        return '<span class="price free-price">رایگان</span>';
+    }
+
+    return $price;
 }
