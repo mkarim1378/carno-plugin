@@ -2348,3 +2348,16 @@ function carno_show_free_when_zero_price( $price, $product ) {
 
     return $price;
 }
+
+// ===========================================================================
+// کلمه رایگان به جای قیمت 0 تومان
+// ===========================================================================
+add_action('gform_after_submission_1', function($entry, $form) {
+    setcookie(
+        'video_lead_done',
+        'true',
+        time() + (7 * 24 * 60 * 60),
+        COOKIEPATH,
+        COOKIE_DOMAIN
+    );
+}, 10, 2);
