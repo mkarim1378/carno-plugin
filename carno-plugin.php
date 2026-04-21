@@ -4,7 +4,7 @@
 Plugin Name:  Carno Customization Plugin
 Plugin URI:   https://sepehralimohammadi.com/
 Description:  این افزونه جهت اعمال شخصی سازی های مورد نیاز بر روی وبسایت مهندس سپهر علیمحمدی توسعه داده شده است. لطفا از غیرفعال کردن این افزونه خودداری فرمایید!
-Version:      1.14.0
+Version:      1.22.2
 Author:       سپهر علیمحمدی
 Author URI:   https://sepehralimohammadi.com/
 */
@@ -445,6 +445,7 @@ function populate_products_checkbox( $form ) {
 }
 // ==========================================================================
 // بارگذاری اسکریپت‌های آنالیتیکس به صورت بهینه
+/*
 add_action('wp_head', function() {
     // فقط در صفحات مهم و نه در صفحات ادمین
     if (!is_admin() && (is_front_page() || is_product() || is_shop() || is_cart() || is_checkout() || is_page())) {
@@ -483,7 +484,7 @@ add_action('wp_head', function() {
         <?php
     }
 });
-
+*/
 
 // Shortcode to display inventory progress bar with countdown
 function nias_inventory_progress_bar_with_timer($atts) {
@@ -700,6 +701,7 @@ function mk_merged_comments_shortcode( $atts ) {
     ob_start();
 
     // ✅ Walker اختصاصی برای حذف لینک‌ها و ریپلای
+    if ( ! class_exists( 'No_Link_Comment_Walker' ) ) {
     class No_Link_Comment_Walker extends Walker_Comment {
         protected function comment( $comment, $depth, $args ) {
             $tag = ( 'div' === $args['style'] ) ? 'div' : 'li';
@@ -727,7 +729,7 @@ function mk_merged_comments_shortcode( $atts ) {
             // ❌ حذف لینک ریپلای
         }
     }
-
+    }
     if ( $comments ) {
         echo '<div id="comments" class="comments-area">';
         wp_list_comments( [
@@ -843,12 +845,6 @@ add_action( 'wp_enqueue_scripts', function() {
     wp_dequeue_style( 'wp-block-library-theme' );
     wp_dequeue_style( 'global-styles' );
 } );
-
-add_action( 'wp_enqueue_scripts', 'dequeue_woocommerce_cart_fragments', 11);
-
-function dequeue_woocommerce_cart_fragments() {
-    if (is_front_page()) wp_dequeue_script('wc-cart-fragments');
-}
 
 // =============================================================================================================
 // غیر فعال کردن آپدیت ترجمه ها
@@ -1104,7 +1100,7 @@ function displayVPNAlertOnCheckout() {
     }
 }
 
-add_action('woocommerce_before_checkout_form', 'displayVPNAlertOnCheckout');
+// add_action('woocommerce_before_checkout_form', 'displayVPNAlertOnCheckout');
 
 
 // =============================================================================================================
@@ -1491,7 +1487,7 @@ function clear_user_cache_on_profile_update($user_id) {
     delete_transient('user_products_' . $user_id);
 }
 add_action('profile_update', 'clear_user_cache_on_profile_update');
-
+/*
 // ============================================================================
 // بهینه‌سازی اسکریپت‌های آنالیتیکس با Lazy Loading
 function optimize_analytics_scripts() {
@@ -1603,23 +1599,7 @@ function track_woocommerce_events() {
     <?php
 }
 add_action('wp_footer', 'track_woocommerce_events');
-
-// ============================================================================
-// اضافه کردن اسکریپت چت بات آیدا به صفحه خاص
-function add_aida_chatbot_script() {
-    // فقط در صفحه خاص نمایش داده شود (می‌توانید slug صفحه را تغییر دهید)
-    if (is_page('test-aida-chatbot')) {
-        ?>
-        <script src="https://cdn.aidasales.ir/chatbox/aida-chatbot.min.fa.js" 
-                data-aida-api-key="1L93YMKEC9" 
-                data-position-chatbox="left" 
-                data-initial-state="closed">
-        </script>
-        <?php
-    }
-}
-add_action('wp_footer', 'add_aida_chatbot_script');
-
+*/
 // ============================================================================
 // اضافه کردن باکس پشتیبانی کارمپ بعد از خرید کارمپ
 add_action( 'woocommerce_thankyou', 'show_elementor_template_after_specific_product_purchase', 10, 1 );
@@ -2343,21 +2323,31 @@ function carno_show_free_when_zero_price( $price, $product ) {
     $regular_price = $product->get_regular_price();
 
     if ( $regular_price !== '' && floatval($regular_price) === 0.0 ) {
-        return '<span class="price free-price">رایگان</span>';
+        return '<span class="price free-price">💥رایگان💥</span>';
     }
 
     return $price;
 }
 
-// ===========================================================================
-// کلمه رایگان به جای قیمت 0 تومان
-// ===========================================================================
-add_action('gform_after_submission_1', function($entry, $form) {
-    setcookie(
-        'video_lead_done',
-        'true',
-        time() + (7 * 24 * 60 * 60),
-        COOKIEPATH,
-        COOKIE_DOMAIN
-    );
-}, 10, 2);
+
+add_filter( 'manage_woocommerce_page_wc-orders_columns', 'add_order_products_column_woo' );
+add_filter( 'manage_edit-shop_order_columns', 'add_order_products_column_woo' );
+function add_order_products_column_woo( $columns ) {
+    $columns['order_products'] = 'محصولات';
+    return $columns;
+}
+add_action( 'manage_woocommerce_page_wc-orders_custom_column', 'show_order_products_column_content_woo', 10, 2 );
+add_action( 'manage_shop_order_posts_custom_column', 'show_order_products_column_content_woo', 10, 2 );
+function show_order_products_column_content_woo( $column, $order_id ) {
+    if ( 'order_products' === $column ) {
+        $order = wc_get_order( $order_id );
+        if ( ! $order ) return;
+
+        $items = $order->get_items();
+        $product_list = array();
+        foreach ( $items as $item ) {
+            $product_list[] = $item->get_name();
+        }
+        echo implode( '<br>', $product_list );
+    }
+}
