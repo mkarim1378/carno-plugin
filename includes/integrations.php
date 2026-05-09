@@ -199,6 +199,7 @@ function carno_create_pending_wc_order_on_submission( $entry, $form ) {
 
     $is_online   = ( (int) $form['id'] === $online_form_id );
     $target_slug = $is_online ? 'online-course' : 'onsite-course';
+    $form_label  = $is_online ? 'دوره آنلاین' : 'دوره حضوری';
 
     // اطلاعات مشتری از فیلدهای فرم (فیلد ۹ = نام کامل، فیلد ۸ = موبایل)
     $full_name  = rgar( $entry, '9' );
@@ -252,11 +253,47 @@ function carno_create_pending_wc_order_on_submission( $entry, $form ) {
         'phone'      => $phone,
     ], 'billing' );
 
-    $order->set_payment_method( 'gravity_forms' );
-    $order->set_payment_method_title( 'پرداخت از طریق فرم (آکادمی کارنو)' );
+    // ثبت منشأ سفارش بدون اتصال به gateway نامعتبر
+    $order->update_meta_data( '_created_via', 'gravity_forms' );
+    $order->update_meta_data( '_gf_form_id', $form['id'] );
+    $order->update_meta_data( '_gf_entry_id', $entry['id'] );
+
+    // تنظیم منبع سفارش برای ستون Attribution ووکامرس
+    $source_url  = $entry['source_url'];
+    $query_parts = [];
+    $parsed_url  = parse_url( $source_url );
+    if ( ! empty( $parsed_url['query'] ) ) {
+        parse_str( $parsed_url['query'], $query_parts );
+    }
+
+    if ( ! empty( $query_parts['utm_source'] ) ) {
+        $order->update_meta_data( '_wc_order_attribution_source_type', 'utm' );
+        $order->update_meta_data( '_wc_order_attribution_utm_source', sanitize_text_field( $query_parts['utm_source'] ) );
+        $order->update_meta_data( '_wc_order_attribution_utm_medium', sanitize_text_field( $query_parts['utm_medium'] ?? '' ) );
+        $order->update_meta_data( '_wc_order_attribution_utm_campaign', sanitize_text_field( $query_parts['utm_campaign'] ?? '' ) );
+    } else {
+        // وقتی UTM در URL نیست، مرجع فرم را ثبت می‌کنیم
+        $order->update_meta_data( '_wc_order_attribution_source_type', 'referral' );
+        $order->update_meta_data( '_wc_order_attribution_utm_source', 'gravity_forms' );
+        $order->update_meta_data( '_wc_order_attribution_referrer', $source_url );
+    }
+    $order->update_meta_data( '_wc_order_attribution_session_entry', $source_url );
 
     $order->calculate_totals();
-    $order->update_status( 'pending', 'سفارش ایجاد شده از فرم ' . $form['id'] . ' — در انتظار پرداخت' );
+    $order->set_status( 'pending' );
+
+    // یادداشت سفارش با جزئیات ثبت‌نام
+    $order->add_order_note(
+        sprintf(
+            "ثبت‌نام از طریق فرم گرویتی — %s\nنام: %s\nموبایل: %s\nفرم: #%d (entry: #%d)",
+            $form_label,
+            $full_name,
+            $raw_phone,
+            $form['id'],
+            $entry['id']
+        )
+    );
+
     $order->save();
 
     // ذخیره آیدی سفارش در متادیتای entry برای مراحل بعدی

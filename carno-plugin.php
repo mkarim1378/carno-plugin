@@ -4,7 +4,7 @@
 Plugin Name:  Carno Customization Plugin
 Plugin URI:   https://sepehralimohammadi.com/
 Description:  این افزونه جهت اعمال شخصی سازی های مورد نیاز بر روی وبسایت مهندس سپهر علیمحمدی توسعه داده شده است. لطفا از غیرفعال کردن این افزونه خودداری فرمایید!
-Version:      2.0.3
+Version:      2.0.4
 Author:       سپهر علیمحمدی
 Author URI:   https://sepehralimohammadi.com/
 */
