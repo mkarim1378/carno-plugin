@@ -42,6 +42,15 @@ function carno_ultimate_favicon_switcher() {
 }
 
 // ============================================================================
+// اسکریپت آمارگیر Statsfa
+add_action('wp_head', function() {
+    if (is_admin()) return;
+    ?>
+<script data-host="https://statsfa.com" data-dnt="false" src="https://statsfa.com/js/script.js" id="ZwSg9rf6GA" async defer></script>
+    <?php
+});
+
+// ============================================================================
 // حذف پارامتر add-to-cart از URL بعد از افزودن محصول به سبد
 function remove_add_to_cart_parameter_after_redirect() {
     ?>
