@@ -134,14 +134,18 @@ function carno_get_dynamic_price($product, $type_slugs) {
     return '';
 }
 
-add_filter('gform_field_value_carno_online', function($value) {
+// قیمت فیلد محصول فرم آنلاین (43) — parameter name فیلد Price در GF
+add_filter('gform_field_value_carno_online_price', function($value) {
     if (!class_exists('WooCommerce') || !is_product()) return $value;
-    return carno_get_dynamic_price(wc_get_product(get_the_ID()), ['آنلاین', 'online', 'online-course']);
+    $price = carno_get_dynamic_price(wc_get_product(get_the_ID()), ['آنلاین', 'online', 'online-course']);
+    return $price !== '' ? $price : $value;
 });
 
-add_filter('gform_field_value_carno_offline', function($value) {
+// قیمت فیلد محصول فرم حضوری (42) — parameter name فیلد Price در GF
+add_filter('gform_field_value_carno_offline_price', function($value) {
     if (!class_exists('WooCommerce') || !is_product()) return $value;
-    return carno_get_dynamic_price(wc_get_product(get_the_ID()), ['حضوری', 'offline', 'onsite-course']);
+    $price = carno_get_dynamic_price(wc_get_product(get_the_ID()), ['حضوری', 'offline', 'onsite-course']);
+    return $price !== '' ? $price : $value;
 });
 
 // تریگر کردن محاسبه مجموع GF بعد از pre-populate قیمت محصول
@@ -152,11 +156,21 @@ function carno_trigger_gf_total_recalculation() {
     ?>
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-        if (typeof gformCalculateTotalPrice !== 'function') return;
         setTimeout(function() {
-            gformCalculateTotalPrice(42);
-            gformCalculateTotalPrice(43);
-        }, 400);
+            // trigger change روی فیلد قیمت محصول تا GF مجموع رو recalculate کنه
+            // فرم آنلاین 43 فیلد 15 — فرم حضوری 42 فیلد 12
+            var fields = [
+                '#ginput_base_price_43_15',
+                '#ginput_base_price_42_12'
+            ];
+            fields.forEach(function(sel) {
+                var el = document.querySelector(sel);
+                if (!el) return;
+                ['change', 'keyup', 'input'].forEach(function(evt) {
+                    el.dispatchEvent(new Event(evt, { bubbles: true }));
+                });
+            });
+        }, 600);
     });
     </script>
     <?php

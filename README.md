@@ -3,7 +3,7 @@
 ## اطلاعات کلی افزونه
 
 - **نام افزونه**: Carno Customization Plugin
-- **نسخه**: 2.0.1
+- **نسخه**: 2.0.2
 - **نویسنده**: سپهر علیمحمدی
 - **آدرس**: https://sepehralimohammadi.com/
 - **توضیحات**: افزونه شخصی‌سازی برای وبسایت آکادمی کارنو (آموزشگاه برق خودرو)
@@ -229,7 +229,11 @@ function carno_get_dynamic_price(...)     // قیمت داینامیک برای 
 
 ### Gravity Forms — محاسبه مجموع
 
-`carno_trigger_gf_total_recalculation()` — بعد از لود صفحه محصول، تابع `gformCalculateTotalPrice` رو برای فرم‌های ۴۲ و ۴۳ تریگر می‌کنه تا فیلد مجموع بعد از pre-populate قیمت محاسبه بشه (بدون این، GF ارور می‌ده).
+`carno_trigger_gf_total_recalculation()` — بعد از لود صفحه محصول، change event روی price input فیلد محصول trigger می‌کنه تا GF مجموع رو recalculate کنه.
+
+فیلد محصول باید نوع **Single Product** باشه. Parameter Name برای sub-field قیمت:
+- فرم ۴۳ (آنلاین): `carno_online_price`
+- فرم ۴۲ (حضوری): `carno_offline_price`
 
 ### Gravity Forms — سفارش ووکامرس از فرم‌های ۴۲ و ۴۳
 
