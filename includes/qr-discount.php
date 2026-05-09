@@ -144,6 +144,24 @@ add_filter('gform_field_value_carno_offline', function($value) {
     return carno_get_dynamic_price(wc_get_product(get_the_ID()), ['حضوری', 'offline', 'onsite-course']);
 });
 
+// تریگر کردن محاسبه مجموع GF بعد از pre-populate قیمت محصول
+// بدون این، فیلد مجموع روی ۰ می‌ماند و GF ارور می‌دهد
+add_action('wp_footer', 'carno_trigger_gf_total_recalculation');
+function carno_trigger_gf_total_recalculation() {
+    if ( ! is_product() ) return;
+    ?>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        if (typeof gformCalculateTotalPrice !== 'function') return;
+        setTimeout(function() {
+            gformCalculateTotalPrice(42);
+            gformCalculateTotalPrice(43);
+        }, 400);
+    });
+    </script>
+    <?php
+}
+
 // نمایش بج تخفیف روی فرم‌های آنلاین (43) و حضوری (42)
 add_filter('gform_form_tag', 'carno_add_discount_badge_to_form', 10, 2);
 function carno_add_discount_badge_to_form($form_tag, $form) {
