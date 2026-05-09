@@ -160,8 +160,8 @@ function carno_trigger_gf_total_recalculation() {
             // trigger change روی فیلد قیمت محصول تا GF مجموع رو recalculate کنه
             // فرم آنلاین 43 فیلد 15 — فرم حضوری 42 فیلد 12
             var fields = [
-                '#ginput_base_price_43_15',
-                '#ginput_base_price_42_12'
+                '#ginput_base_price_43_18',
+                '#ginput_base_price_42_14'
             ];
             fields.forEach(function(sel) {
                 var el = document.querySelector(sel);
