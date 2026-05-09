@@ -2,492 +2,288 @@
 
 ## اطلاعات کلی افزونه
 
--   **نام افزونه**: Carno Customization Plugin
--   **نسخه**: 1.15.0
--   **نویسنده**: سپهر علیمحمدی
--   **آدرس**: https://sepehralimohammadi.com/
--   **توضیحات**: افزونه شخصی‌سازی برای وبسایت آکادمی کارنو (آموزشگاه برق خودرو مهندس سپهر علیمحمدی)
+- **نام افزونه**: Carno Customization Plugin
+- **نسخه**: 2.0.0
+- **نویسنده**: سپهر علیمحمدی
+- **آدرس**: https://sepehralimohammadi.com/
+- **توضیحات**: افزونه شخصی‌سازی برای وبسایت آکادمی کارنو (آموزشگاه برق خودرو)
 
-## ساختار کلی افزونه
+---
 
-این افزونه در یک فایل واحد (`carno-plugin.php`) قرار دارد و شامل قابلیت‌های زیر است:
+## ساختار فایل‌های افزونه
 
-**نکته مهم**: قابلیت مدیریت دوره‌های مینی از این افزونه جدا شده و به یک افزونه داینامیک مجزا (Carno Mini Courses Plugin) منتقل شده است. برای استفاده از آن قابلیت، لطفاً افزونه جداگانه را نصب کنید.
-
-## 1. مدیریت قیمت‌گذاری محصولات متغیر
-
-### 1.1 شورتکد نمایش قیمت بر اساس ویژگی‌ها
-
-```php
-add_shortcode( 'variation_price_by_attr', function( $atts ) {
-    // کد مربوط به نمایش قیمت وارییشن بر اساس ویژگی‌ها
-});
+```
+carno-plugin/
+├── carno-plugin.php          ← فایل اصلی - فقط header و require_once ها
+└── includes/
+    ├── performance.php       ← بهینه‌سازی وردپرس، حذف bloat
+    ├── security.php          ← ریدایرکت 410، تشخیص VPN/ایران
+    ├── users.php             ← ساخت کاربر، اتصال سفارشات، کش
+    ├── content.php           ← شورتکدها، TOC، بازدید، کامنت
+    ├── woo-pricing.php       ← تخفیف سبد، پکیج، ساعت ۱۶، نمایش رایگان
+    ├── woo-orders.php        ← تکمیل خودکار، فیلتر، ستون ادمین
+    ├── woo-checkout.php      ← فیلدهای چک‌اوت، نام کامل، کوپن
+    ├── woo-campaign.php      ← کمپین special_buy (لینک‌های اسپات)
+    ├── qr-discount.php       ← سیستم تخفیف QR کد / کتاب
+    ├── integrations.php      ← Elementor، Gravity Forms، Rank Math، Voorodak
+    └── ui.php                ← فاوآیکون داینامیک، CTA، URL تمیز
 ```
 
-**عملکرد**: نمایش قیمت وارییشن محصولات متغیر بر اساس ویژگی‌های انتخاب شده
+---
 
-### 1.2 شورتکد نمایش قیمت بر اساس ID
+## ۱. performance.php — بهینه‌سازی وردپرس
+
+### مسدود کردن درخواست‌های خارجی
 
 ```php
-add_shortcode( 'variation_price', 'show_variation_price_by_id' );
+function BlockExternalHostRequests($false, $parsed_args, $url)
 ```
 
-**عملکرد**: نمایش قیمت وارییشن خاص بر اساس شناسه وارییشن
+هاست‌های مسدود: `rankmath.com`, `googleapis.com`, `github.com`, `yoast.com`, `w.org`, `elementor.com`, `cloudflare.com`, `woocommerce.com`
 
-## 2. سیستم تخفیف‌های ویژه
+### سایر بهینه‌سازی‌ها
 
-### 2.1 ذخیره فلگ تخفیف ویژه در سشن
+- غیرفعال کردن Block Editor و Widget Block Editor
+- حذف استایل‌های `wp-block-library` و `global-styles`
+- غیرفعال کردن آپدیت خودکار ترجمه‌ها
+- حذف هدرهای اضافی وردپرس (RSD, generator, shortlink, ...)
+- غیرفعال کردن RSS و Atom feed
+- حذف Dashicons برای کاربران غیر لاگین
+- غیرفعال کردن Emoji
+- حذف jquery-migrate
+
+---
+
+## ۲. security.php — امنیت و ریدایرکت‌ها
+
+### ریدایرکت‌های ۴۱۰
+
+- URL هایی که به `.html` ختم می‌شوند → `410 Gone`
+- Query string های مشکوک با پارامتر `o=` یا `b=` → `410 Gone`
+
+### تشخیص موقعیت جغرافیایی
+
+```php
+function isUserFromIran()   // از سرویس ip-api.com با کش 1 ساعته
+function displayVPNAlertOnCheckout()   // غیرفعال — قابل فعال‌سازی
+```
+
+---
+
+## ۳. users.php — مدیریت کاربران
+
+### توابع اصلی
+
+| تابع | عملکرد |
+|---|---|
+| `user_exists_by_phone($phone)` | جستجوی کاربر با شماره تلفن، کش 30 دقیقه |
+| `create_user_from_guest_order_by_phone_v2($order_id)` | ساخت حساب یا اتصال سفارش مهمان |
+| `connect_guest_orders_by_phone_to_user_account($user_id)` | اتصال سفارشات قدیمی بعد از لاگین |
+| `mk_update_user_display_name($user_id)` | آپدیت نام نمایشی از first/last name |
+| `sync_voorodak_phone_to_billing_phone($user_id)` | همگام‌سازی موبایل Voorodak با billing_phone |
+| `keep_user_logged_in_for_1_year($expirein)` | تمدید session به ۱ سال |
+| `clear_performance_cache()` | پاک کردن transient بعد از خرید |
+
+**نکته نرمال‌سازی شماره:** `user_exists_by_phone` از ۱۰ رقم آخر استفاده می‌کند، `connect_guest_orders` از ۹ رقم آخر (با LIKE در دیتابیس).
+
+---
+
+## ۴. content.php — شورتکدها و محتوا
+
+### شورتکدهای موجود
+
+| شورتکد | تابع | توضیح |
+|---|---|---|
+| `[read_time]` | `kar_read_time_shortcode()` | زمان مطالعه — پارامترهای `wpm`, `label`, `icon`, `min` |
+| `[nias_inventory_progress_bar]` | `nias_inventory_progress_bar_with_timer()` | نوار موجودی + تایمر معکوس |
+| `[my_merged_comments ids="1,2"]` | `mk_merged_comments_shortcode()` | کامنت‌های ترکیبی چند صفحه |
+| `[carno_toc]` | `carno_generate_toc()` | فهرست مطالب از H2 ها |
+| `[box type="product" id="123"]` | `suggestion_box()` | باکس پیشنهاد محصول یا مقاله |
+| `[carno_tip]` | `carno_tip_shortcode()` | باکس نکته (wrapper div) |
+
+### سایر
+
+- `carno_add_heading_ids()` — تزریق `id` به تگ‌های H2 برای لینک TOC
+- `track_post_views()` — شمارش بازدید در `wp_footer` (فقط کاربران لاگین نشده)
+
+---
+
+## ۵. woo-pricing.php — قیمت‌گذاری ووکامرس
+
+### شورتکدهای قیمت
+
+| شورتکد | توضیح |
+|---|---|
+| `[variation_price_by_attr attr="val"]` | قیمت وارییشن بر اساس ویژگی |
+| `[variation_price id="123"]` | قیمت وارییشن بر اساس ID |
+
+### تخفیف session-based (`?special=1`)
 
 ```php
 function carno_store_special_discount_flag_in_session()
+function carno_apply_fixed_discount_for_specific_product($cart)
 ```
 
-**عملکرد**:
+محصولات: ۱۳۹۲۸ (GDS) → ۲,۰۲۰,۰۰۰ تومان | ۱۳۵۳۴ (چک‌لیست) → ۱,۰۲۰,۰۰۰ | ۳۸۴۲۷ → ۶,۶۰۰,۰۰۰
 
--   دریافت پارامتر `special` از URL
--   ذخیره وضعیت تخفیف ویژه در سشن ووکامرس
--   پشتیبانی از مقادیر `1` (فعال) و `0` (غیرفعال)
-
-### 2.2 اعمال تخفیف ثابت برای محصولات خاص
+### تخفیف پکیج
 
 ```php
-function carno_apply_fixed_discount_for_specific_product( $cart )
+function custom_package_fixed_price($cart)
 ```
+خرید همزمان محصولات ۱۶۱۸۰ + ۱۳۵۳۴ → قیمت پکیج ۵,۰۰۰,۰۰۰ تومان
 
-**محصولات تحت پوشش تخفیف**:
-
--   محصول ID: 13928 - تخفیف 2,020,000 تومان (تخفیف ویژه خریداران GDS)
--   محصول ID: 33429 - تخفیف 1,020,000 تومان (تخفیف ویژه)
--   محصول ID: 13534 - تخفیف 1,020,000 تومان (تخفیف ویژه دریافت کنندگان چک لیست پذیرش)
-
-## 3. مدیریت کاربران و سفارشات مهمان
-
-### 3.1 بررسی وجود کاربر بر اساس شماره تلفن
+### پنهان کردن تخفیف در ساعت ۱۶–۱۷ تهران
 
 ```php
-function user_exists_by_phone($phone)
+function carno_dynamic_fixed_price($price, $product)   // بازگشت قیمت عادی
+function carno_hide_sale_flash($is_on_sale, $product)  // حذف لیبل حراج
+function carno_hide_timer_css()                         // مخفی کردن ویجت تایمر
 ```
 
-**عملکرد**:
-
--   نرمال‌سازی شماره تلفن (10 رقم آخر)
--   جستجو در username و usermeta
--   بررسی فیلدهای `billing_phone` و `digits_phone_no`
-
-### 3.2 ساخت کاربر از سفارش مهمان
+### نمایش رایگان
 
 ```php
-function create_user_from_guest_order_by_phone_v2($order_id)
+function carno_show_free_when_zero_price($price, $product)  // نمایش "💥رایگان💥"
 ```
 
-**عملکرد**:
+---
 
--   بررسی سفارشات مهمان (customer_id = 0)
--   جستجوی کاربر موجود بر اساس شماره تلفن
--   اتصال سفارش به کاربر موجود یا ساخت کاربر جدید
--   تولید username بر اساس شماره تلفن
--   تولید ایمیل خودکار
+## ۶. woo-orders.php — مدیریت سفارشات
 
-### 3.3 اتصال سفارشات مهمان به حساب کاربری
+- `auto_complete_all_orders($order_id)` — تبدیل خودکار `processing` به `completed`
+- `filter_canceled_orders_from_my_account($args)` — پنهان کردن سفارشات لغو شده
+- `disable_my_account_orders_pagination($args)` — نمایش همه سفارشات بدون صفحه‌بندی
+- `customize_my_orders_columns($columns)` — حذف ستون "مجموع"، اضافه کردن ستون "محصولات"
+- `add_order_products_column_woo($columns)` — ستون محصولات در پنل ادمین (سازگار با HPOS)
+
+---
+
+## ۷. woo-checkout.php — چک‌اوت
+
+- `customize_checkout_fields($fields)` — فقط نام کامل + موبایل (+ آدرس/کدپستی اگر محصول ۱۳۵۳۴ در سبد باشد)
+- `split_full_name_before_save($posted_data)` — تقسیم نام کامل به first/last name
+- `populate_full_name_field($value, $input)` — پر کردن فیلد نام در ویرایش
+- `change_coupon_label_text($label, $coupon)` — برچسب کوپن → «سود شما از این خرید»
+
+---
+
+## ۸. woo-campaign.php — کمپین special_buy
+
+سیستم لینک‌های اسپات برای فروش مستقیم با قیمت ثابت.
+
+### URL ورودی
+```
+yoursite.com/product/?special_buy=1&pid=PRODUCT_ID&vid=VARIATION_ID
+```
+
+### توابع
+
+| تابع | عملکرد |
+|---|---|
+| `get_sepehr_final_prices()` | آرایه قیمت‌های ثابت محصولات |
+| `handle_direct_purchase_link()` | خالی کردن سبد، افزودن محصول، ریدایرکت به checkout |
+| `apply_fixed_price_logic($cart)` | اعمال قیمت ثابت در سبد |
+| `block_coupons_for_fixed_price(...)` | جلوگیری از اعمال کوپن |
+| `carno_save_special_buy_to_order(...)` | ذخیره متادیتای کمپین در سفارش |
+| `carno_add_order_special_column(...)` | ستون «کمپین ویژه» در ادمین |
+| `carno_apply_special_buy_filter_legacy/hpos(...)` | فیلتر سفارشات کمپین |
+
+**محصولات کمپین:** ۴۱۰۷۸ (کره آنلاین) | ۳۸۴۲۷ (چینی آنلاین) | ۱۸۵۳۵ (داخلی) | ۱۶۱۸۰ (زبان فنی) | ۱۳۹۲۸ (GDS) | ۱۳۵۳۴ (کتاب) | ۴۱۴۶۲ (فرمان برقی)
+
+---
+
+## ۹. qr-discount.php — سیستم تخفیف QR کد/کتاب
+
+کاربرانی که از QR کد کتاب وارد می‌شوند (`?utm_source=book_qr`) تخفیف ۳۰ دقیقه‌ای دریافت می‌کنند.
+
+### جریان کار
+
+1. ورود با `?utm_source=book_qr` → کوکی `carno_book_ids` ست می‌شود (۳۰ دقیقه)
+2. قیمت‌های ویژه روی محصول نمایش داده می‌شوند (`carno_final_price_logic`)
+3. پیغام تبریک در `wp_footer` نمایش داده می‌شود (یکبار در session)
+
+### توابع
 
 ```php
-function connect_guest_orders_by_phone_to_user_account($user_id)
+function carno_get_special_prices()       // آرایه قیمت‌های ویژه
+function carno_is_discount_active()       // چک کوکی یا UTM
+function carno_is_item_discounted($id)    // چک محصول خاص
+function carno_final_price_logic(...)     // فیلتر قیمت (priority 999)
+function carno_force_sale_ui(...)         // نمایش قیمت خط‌خورده
+function carno_get_dynamic_price(...)     // قیمت داینامیک برای GF
 ```
 
-**عملکرد**:
+**نکته:** آرایه `carno_get_special_prices()` و `get_sepehr_final_prices()` در `woo-campaign.php` هر دو قیمت یکسانی دارند اما سیستم‌های مجزا هستند.
 
--   اتصال خودکار سفارشات مهمان بعد از لاگین
--   نرمال‌سازی شماره تلفن برای تطبیق
--   اتصال به هوک‌های `voorodak_after_do_login` و `voorodak_after_do_register`
+---
 
-## 4. سیستم محافظت از محتوا
+## ۱۰. integrations.php — یکپارچه‌سازی‌ها
 
-### 4.1 محافظت از صفحه محتوای دوره
+### Elementor
 
-```php
-function km_protect_course_content_page()
-```
+- تمپلیت `37026` قبل از جدول سفارش (در صفحه view-order)
+- تمپلیت `31944` بعد از خرید دوره‌های حضوری
+- تمپلیت `40177` بعد از خرید محصول `39576`
+- باکس VIP برای وارییشن `41078` بعد از خرید
 
-**عملکرد**:
+### Gravity Forms — سفارش ووکامرس از فرم‌های ۴۲ و ۴۳
 
--   بررسی لاگین بودن کاربر
--   بررسی خرید محصولات دوره (IDs: 33429, 33496, 33497)
--   ریدایرکت به صفحه لاگین یا صفحه اصلی دوره
+جریان کار:
 
-### 4.2 ریدایرکت بعد از خرید
+| مرحله | Hook | نتیجه |
+|---|---|---|
+| ارسال فرم | `gform_after_submission` | سفارش با وضعیت `pending` ساخته می‌شود |
+| پرداخت موفق | `gform_post_payment_completed` | وضعیت → `completed` |
+| پرداخت ناموفق | `gform_post_payment_failed` | وضعیت → `cancelled` |
 
-```php
-function redirect_to_course_contents_after_purchase($order_id)
-```
+آیدی سفارش با `gform_update_meta` در entry ذخیره می‌شود تا hook های بعدی بتوانند آن را پیدا کنند.
 
-**عملکرد**:
+- فرم `21` — پر کردن چک‌باکس با محصولات خریداری شده کاربر (کش 1 ساعته)
+- فرم `22` — تغییر متن دکمه «بعدی» به «دانلود فیلم وبینار»
 
--   ریدایرکت خودکار به صفحه محتوای دوره بعد از خرید
--   تغییر لینک "مشاهده سفارش" در حساب کاربری
--   تغییر دکمه خرید به "مشاهده دوره" برای خریداران
+### Rank Math
 
-## 5. سیستم نمایش محتوا
+- `rank_math/frontend/breadcrumb/items` — مسیر نان مقالات: آکادمی کارنو > مقالات > عنوان
+- `rank_math/snippet/rich_snippet_product_entity` — واحد پول IRT → IRR، ضرب قیمت در ۱۰
 
-### 5.1 نمایش تمپلیت درخواست لایسنس
+### Voorodak
 
-```php
-function display_elementor_template_before_order_details_table( $order )
-```
+- `sync_voorodak_phone_to_billing_phone()` — همگام‌سازی موبایل هنگام login/register/profile_update
 
-**عملکرد**: نمایش تمپلیت Elementor با ID 37026 در صفحه مشاهده سفارش
+---
 
-### 5.2 پر کردن فرم گرویتی با محصولات خریداری شده
+## ۱۱. ui.php — رابط کاربری
 
-```php
-function populate_products_checkbox( $form )
-```
+- `carno_ultimate_favicon_switcher()` — فاوآیکون داینامیک بر اساس dark/light mode مرورگر
+- `remove_add_to_cart_parameter_after_redirect()` — حذف `?add-to-cart=` از URL با JS
+- Floating CTA script — نمایش باکس CTA لندینگ بعد از اسکرول از hero section (فقط دسکتاپ)
 
-**عملکرد**:
+---
 
--   پر کردن فیلد چک‌باکس با محصولات خریداری شده کاربر
--   فیلتر کردن سفارشات تکمیل شده
--   استفاده در فرم گرویتی با ID 21
+## افزونه‌های مورد نیاز
 
-## 6. سیستم آنالیتیکس و رهگیری
+| افزونه | کاربرد |
+|---|---|
+| WooCommerce | تمام قابلیت‌های فروشگاهی |
+| Elementor | رندر تمپلیت‌ها در صفحه سفارش |
+| Gravity Forms | فرم‌های ۲۱، ۲۲، ۴۲، ۴۳ |
+| Rank Math SEO | breadcrumb و schema |
+| Voorodak | ورود با موبایل |
 
-### 6.1 اسکریپت یکتانت
+## تمپلیت‌های Elementor
 
-```php
-add_action('wp_head', function() {
-    // اسکریپت یکتانت برای رهگیری
-});
-```
+| ID | محل استفاده |
+|---|---|
+| `37026` | صفحه مشاهده سفارش (درخواست لایسنس) |
+| `31944` | صفحه تشکر — دوره‌های حضوری |
+| `40177` | صفحه تشکر — محصول ۳۹۵۷۶ |
 
-**عملکرد**: اضافه کردن اسکریپت رهگیری یکتانت به هدر سایت
+## فرم‌های Gravity Forms
 
-### 6.2 رهگیری بازدید صفحات
-
-```php
-function track_post_views()
-```
-
-**عملکرد**:
-
--   شمارش بازدید صفحات و پست‌ها
--   ذخیره در متای `post_views`
-
-## 7. سیستم موجودی و پیشرفت فروش
-
-### 7.1 نوار پیشرفت موجودی با تایمر
-
-```php
-function nias_inventory_progress_bar_with_timer($atts)
-```
-
-**عملکرد**:
-
--   نمایش نوار پیشرفت فروش محصول
--   نمایش تایمر معکوس
--   محاسبه درصد فروش بر اساس موجودی اولیه
--   شورتکد: `[nias_inventory_progress_bar]`
-
-### 7.2 ذخیره موجودی اولیه
-
-```php
-function nias_save_original_stock($post_id)
-```
-
-**عملکرد**: ذخیره موجودی اولیه محصول در متای `_original_stock`
-
-## 8. سیستم کامنت‌ها
-
-### 8.1 شورتکد کامنت‌های ادغام شده
-
-```php
-function mk_merged_comments_shortcode( $atts )
-```
-
-**عملکرد**:
-
--   نمایش کامنت‌های چندین صفحه در یک مکان
--   حذف لینک تاریخ و ریپلای
--   شورتکد: `[my_merged_comments ids="1,2,3"]`
-
-## 9. سیستم تخفیف و قیمت‌گذاری
-
-### 9.1 محاسبه درصد تخفیف
-
-```php
-function save_discount_percentage_meta( $post_id )
-```
-
-**عملکرد**:
-
--   محاسبه و ذخیره درصد تخفیف محصولات
--   ذخیره در متای `_discount_percentage`
-
-### 9.2 تغییر برچسب کوپن
-
-```php
-function change_coupon_label_text( $label, $coupon )
-```
-
-**عملکرد**: تغییر برچسب کوپن به "سود شما از این خرید"
-
-## 10. سیستم فرم‌ها و چک‌اوت
-
-### 10.1 شخصی‌سازی فیلدهای چک‌اوت
-
-```php
-function customize_checkout_fields($fields)
-```
-
-**عملکرد**:
-
--   حذف فیلدهای غیرضروری (شرکت، آدرس 2، ایمیل)
--   ترکیب نام و نام خانوادگی
--   حذف فیلدهای آدرس برای محصولات مجازی
-
-### 10.2 تقسیم نام کامل
-
-```php
-function split_full_name_before_save($posted_data)
-```
-
-**عملکرد**: تقسیم نام کامل به نام و نام خانوادگی هنگام ذخیره
-
-## 11. سیستم امنیتی و بهینه‌سازی
-
-### 11.1 مسدود کردن درخواست‌های خارجی
-
-```php
-function BlockExternalHostRequests ($false, $parsed_args, $url)
-```
-
-**عملکرد**:
-
--   مسدود کردن درخواست‌های به هاست‌های خارجی
--   بهبود سرعت بارگذاری
--   لیست هاست‌های مسدود شده شامل: rankmath.com, googleapis.com, github.com, و غیره
-
-### 11.2 غیرفعال کردن بلاک ادیتور
-
-```php
-add_filter( 'use_block_editor_for_post', '__return_false' );
-add_filter( 'use_widgets_block_editor', '__return_false' );
-```
-
-### 11.3 حذف استایل‌های غیرضروری
-
-```php
-add_action( 'wp_enqueue_scripts', function() {
-    wp_dequeue_style( 'wp-block-library' );
-    wp_dequeue_style( 'wp-block-library-theme' );
-    wp_dequeue_style( 'global-styles' );
-});
-```
-
-## 12. سیستم تشخیص موقعیت جغرافیایی
-
-### 12.1 تشخیص کاربران ایرانی
-
-```php
-function isUserFromIran()
-```
-
-**عملکرد**:
-
--   تشخیص IP کاربر
--   استفاده از سرویس ip-api.com
--   نمایش هشدار برای کاربران غیرایرانی یا با VPN
-
-## 13. سیستم سفارشات
-
-### 13.1 فیلتر سفارشات لغو شده
-
-```php
-function filter_canceled_orders_from_my_account($args)
-```
-
-**عملکرد**: حذف سفارشات لغو شده از صفحه سفارشات کاربر
-
-### 13.2 غیرفعال کردن صفحه‌بندی سفارشات
-
-```php
-function disable_my_account_orders_pagination($args)
-```
-
-**عملکرد**: نمایش تمام سفارشات بدون صفحه‌بندی
-
-### 13.3 شخصی‌سازی ستون‌های سفارشات
-
-```php
-function customize_my_orders_columns($columns)
-```
-
-**عملکرد**:
-
--   حذف ستون "مجموع"
--   اضافه کردن ستون "محصولات"
--   نمایش نام محصولات در ستون جدید
-
-## 14. سیستم پیشنهاد محصولات
-
-### 14.1 شورتکد پیشنهاد محصول/مقاله
-
-```php
-function suggestion_box($atts)
-```
-
-**عملکرد**:
-
--   نمایش جعبه پیشنهاد محصول یا مقاله
--   پشتیبانی از تخفیف و تصویر
--   شورتکد: `[box type="product" id="123"]`
-
-## 15. سیستم SEO و Schema
-
-### 15.1 اصلاح واحد پول در Schema
-
-```php
-add_filter( 'rank_math/snippet/rich_snippet_product_entity', function( $entity )
-```
-
-**عملکرد**: تغییر واحد پول از IRT به IRR در Schema محصولات
-
-### 15.2 شخصی‌سازی Breadcrumb
-
-```php
-add_filter( 'rank_math/frontend/breadcrumb/items', function( $crumbs, $class )
-```
-
-**عملکرد**: شخصی‌سازی مسیر نان برای مقالات
-
-## 16. سیستم همگام‌سازی شماره تلفن
-
-### 16.1 همگام‌سازی شماره تلفن
-
-```php
-function sync_voorodak_phone_to_billing_phone($user_id)
-```
-
-**عملکرد**:
-
--   همگام‌سازی شماره تلفن بین افزونه‌های مختلف
--   اولویت: Voorodak > Digits > billing_phone
-
-## 17. سیستم مدیریت محتوا
-
-### 17.1 فهرست مطالب خودکار
-
-```php
-function carno_generate_toc($atts)
-```
-
-**عملکرد**:
-
--   تولید فهرست مطالب از تگ‌های H2
--   شورتکد: `[carno_toc]`
--   اضافه کردن ID به هدینگ‌ها
-
-### 17.2 شمارش کامنت‌های کاربر
-
-```php
-function wpheart_update_comments_count($user_login, $user)
-```
-
-**عملکرد**: شمارش و ذخیره تعداد کامنت‌های تایید شده کاربر
-
-## 18. سیستم لاگین پایدار
-
-### 18.1 تمدید زمان لاگین
-
-```php
-function keep_user_logged_in_for_1_year($expirein)
-```
-
-**عملکرد**: تمدید زمان لاگین کاربران به 1 سال
-
-## 19. سیستم مدیریت URL
-
-### 19.1 مسدود کردن URL های غیرمجاز
-
-```php
-add_action('template_redirect', function () {
-    if (preg_match('/\.html$/i', $_SERVER['REQUEST_URI'])) {
-        status_header(410);
-        exit;
-    }
-});
-```
-
-**عملکرد**: مسدود کردن URL های با پسوند .html
-
-### 19.2 مسدود کردن پارامترهای خاص
-
-```php
-add_action('template_redirect', function () {
-    if (!empty($_SERVER['QUERY_STRING']) && preg_match('/^(?:o|b)(?:=|%3D)/i', $_SERVER['QUERY_STRING'])) {
-        status_header(410);
-        exit;
-    }
-});
-```
-
-## 20. سیستم نمایش محتوای سفارش
-
-### 20.1 نمایش محتوای سفارش سفارشی
-
-```php
-function display_custom_order_content($order)
-```
-
-**عملکرد**:
-
--   نمایش باکس VIP برای محصولات خاص
--   نمایش فرم برای دوره‌های حضوری
--   تشخیص محصولات بر اساس ID و ویژگی‌ها
-
-## 21. سیستم مدیریت فرم‌ها
-
-### 21.1 تغییر دکمه فرم گرویتی
-
-```php
-function change_next_button_for_specific_form( $button, $form )
-```
-
-**عملکرد**: تغییر متن دکمه "بعدی" در فرم گرویتی ID 22
-
-## نکات مهم برای توسعه‌دهندگان
-
-### امنیت
-
--   تمام ورودی‌های کاربر باید sanitize شوند
--   استفاده از `esc_html()` و `esc_url()` برای خروجی
--   بررسی وجود توابع قبل از استفاده
-
-### بهینه‌سازی
-
--   افزونه شامل سیستم مسدود کردن درخواست‌های خارجی است
--   حذف استایل‌ها و اسکریپت‌های غیرضروری
--   غیرفعال کردن بلاک ادیتور برای بهبود عملکرد
-
-### سازگاری
-
--   سازگار با ووکامرس
--   سازگار با Elementor
--   سازگار با افزونه‌های ورودک و دیجیتس
--   سازگار با Rank Math SEO
-
-### نگهداری
-
--   لاگ‌های خطا در `error_log` ذخیره می‌شوند
--   متا داده‌های سفارشی برای ذخیره اطلاعات اضافی
--   استفاده از هوک‌های وردپرس برای یکپارچگی
-
-## افزونه‌های مرتبط
-
-### Carno Mini Courses Plugin
-
-افزونه داینامیک جداگانه برای مدیریت دوره‌های مینی و قابلیت‌های مرتبط.
-
-## فایل‌های وابسته
-
--   `carno-plugin.php` - فایل اصلی افزونه
--   تمپلیت‌های Elementor (ID: 37026, 31944)
--   فرم‌های گرویتی (ID: 21, 22)
+| ID | کاربرد |
+|---|---|
+| `21` | درخواست لایسنس — فیلد ۸ با محصولات خریداری شده پر می‌شود |
+| `22` | فرم چندمرحله‌ای — دکمه «بعدی» تغییر نام دارد |
+| `42` | ثبت‌نام دوره حضوری — ایجاد سفارش WooCommerce |
+| `43` | ثبت‌نام دوره آنلاین — ایجاد سفارش WooCommerce |

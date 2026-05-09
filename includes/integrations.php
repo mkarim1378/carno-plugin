@@ -178,104 +178,124 @@ function change_next_button_for_specific_form( $button, $form ) {
 }
 
 // ============================================================================
-// Gravity Forms - ساخت سفارش ووکامرس بعد از پرداخت فرم (فرم‌های 42 و 43)
-add_action( 'gform_post_payment_completed', 'carno_create_wc_order_after_payment_v2', 10, 2 );
+// Gravity Forms - مدیریت سفارش ووکامرس برای فرم‌های 42 (حضوری) و 43 (آنلاین)
+//
+// جریان کار:
+//   ۱. فرم ارسال شد  → سفارش با وضعیت «در انتظار پرداخت» ساخته می‌شود
+//   ۲. پرداخت موفق   → وضعیت سفارش به «تکمیل شده» تغییر می‌کند
+//   ۳. پرداخت ناموفق → وضعیت سفارش به «لغو شده» تغییر می‌کند
+// ============================================================================
 
-function carno_create_wc_order_after_payment_v2( $entry, $action ) {
+// گام ۱ - ساخت سفارش pending هنگام submit فرم (قبل از رفتن به درگاه)
+add_action( 'gform_after_submission', 'carno_create_pending_wc_order_on_submission', 10, 2 );
+function carno_create_pending_wc_order_on_submission( $entry, $form ) {
+    $online_form_id = 43;
+    $onsite_form_id = 42;
 
-    $online_form_id  = 43;
-    $onsite_form_id  = 42;
+    if ( ! in_array( (int) $form['id'], [ $online_form_id, $onsite_form_id ] ) ) return;
 
-    $online_fields = array(
-        'name'    => 9,
-        'phone'   => 8,
-        'product' => 15
-    );
+    // جلوگیری از ساخت سفارش تکراری برای همین entry
+    if ( gform_get_meta( $entry['id'], 'carno_wc_order_id' ) ) return;
 
-    $onsite_fields = array(
-        'name'    => 9,
-        'phone'   => 8,
-        'product' => 12
-    );
+    $is_online   = ( (int) $form['id'] === $online_form_id );
+    $target_slug = $is_online ? 'online-course' : 'onsite-course';
 
-    $current_form_id = rgar( $entry, 'form_id' );
-    $target_slug     = '';
-    $fields_map      = array();
-
-    if ( $current_form_id == $online_form_id ) {
-        $target_slug = 'online-course';
-        $fields_map  = $online_fields;
-    } elseif ( $current_form_id == $onsite_form_id ) {
-        $target_slug = 'onsite-course';
-        $fields_map  = $onsite_fields;
-    } else {
-        return;
-    }
-
-    $full_name = rgar( $entry, $fields_map['name'] );
-    $raw_phone = rgar( $entry, $fields_map['phone'] );
-
-    $parts = explode( ' ', trim( $full_name ), 2 );
+    // اطلاعات مشتری از فیلدهای فرم (فیلد ۹ = نام کامل، فیلد ۸ = موبایل)
+    $full_name  = rgar( $entry, '9' );
+    $raw_phone  = rgar( $entry, '8' );
+    $parts      = explode( ' ', trim( $full_name ), 2 );
     $first_name = $parts[0];
     $last_name  = isset( $parts[1] ) ? $parts[1] : '';
+    $phone      = ltrim( $raw_phone, '0' );
 
-    $phone = ltrim( $raw_phone, '0' );
-
-    $product_id = rgar( $entry, 'post_id' );
-
-    if ( empty( $product_id ) ) {
+    // پیدا کردن محصول از URL صفحه‌ای که فرم در آن بوده
+    $product_id = (int) rgar( $entry, 'post_id' );
+    if ( ! $product_id ) {
         $product_id = url_to_postid( $entry['source_url'] );
     }
-
     if ( ! $product_id ) return;
 
     $product = wc_get_product( $product_id );
+    if ( ! $product ) return;
+
+    // پیدا کردن وارییشن صحیح و قیمت آن از ووکامرس
     $item_id_to_add = $product_id;
+    $item_price     = (float) $product->get_price();
 
     if ( $product->is_type( 'variable' ) ) {
-
-        $variations = $product->get_available_variations();
-
-        foreach ( $variations as $variation ) {
+        foreach ( $product->get_available_variations() as $variation ) {
             if ( in_array( $target_slug, $variation['attributes'] ) ) {
                 $item_id_to_add = $variation['variation_id'];
+                $var_obj        = wc_get_product( $variation['variation_id'] );
+                if ( $var_obj ) {
+                    $item_price = (float) $var_obj->get_price();
+                }
                 break;
             }
         }
     }
 
-    if ( $item_id_to_add ) {
+    // ساخت سفارش با وضعیت در انتظار پرداخت
+    $order         = wc_create_order();
+    $order_item_id = $order->add_product( wc_get_product( $item_id_to_add ), 1 );
 
-        $order = wc_create_order();
-
-        $order_item_id = $order->add_product( wc_get_product( $item_id_to_add ), 1 );
+    if ( $item_price > 0 ) {
         $item = $order->get_item( $order_item_id );
-        $paid_amount = 0;
-        $product_field_id = $fields_map['product'] . '.2';
-        $paid_amount = floatval( rgar( $entry, $product_field_id ) );
-
-        if ( $paid_amount > 0 ) {
-            $item->set_subtotal( $paid_amount );
-            $item->set_total( $paid_amount );
-            $item->save();
-        }
-
-        $address = array(
-            'first_name' => $first_name,
-            'last_name'  => $last_name,
-            'phone'      => $phone,
-        );
-        $order->set_address( $address, 'billing' );
-
-        $order->set_payment_method( 'Gravity Forms Direct' );
-        $order->set_payment_method_title( 'پرداخت سریع (آکادمی کارنو)' );
-
-        $order->calculate_totals();
-
-        $order->update_status( 'completed', 'سفارش ثبت شده توسط فرم شماره ' . $current_form_id . ' - شناسه تراکنش: ' . rgar($entry, 'transaction_id') );
-
-        $order->save();
+        $item->set_subtotal( $item_price );
+        $item->set_total( $item_price );
+        $item->save();
     }
+
+    $order->set_address( [
+        'first_name' => $first_name,
+        'last_name'  => $last_name,
+        'phone'      => $phone,
+    ], 'billing' );
+
+    $order->set_payment_method( 'gravity_forms' );
+    $order->set_payment_method_title( 'پرداخت از طریق فرم (آکادمی کارنو)' );
+
+    $order->calculate_totals();
+    $order->update_status( 'pending', 'سفارش ایجاد شده از فرم ' . $form['id'] . ' — در انتظار پرداخت' );
+    $order->save();
+
+    // ذخیره آیدی سفارش در متادیتای entry برای مراحل بعدی
+    gform_update_meta( $entry['id'], 'carno_wc_order_id', $order->get_id() );
+}
+
+// گام ۲ - پرداخت موفق: سفارش را completed کن
+add_action( 'gform_post_payment_completed', 'carno_complete_wc_order_on_payment', 10, 2 );
+function carno_complete_wc_order_on_payment( $entry, $action ) {
+    if ( ! in_array( (int) rgar( $entry, 'form_id' ), [ 42, 43 ] ) ) return;
+
+    $order_id = gform_get_meta( $entry['id'], 'carno_wc_order_id' );
+    if ( ! $order_id ) return;
+
+    $order = wc_get_order( $order_id );
+    if ( ! $order ) return;
+
+    $transaction_id = rgar( $action, 'transaction_id' );
+    if ( $transaction_id ) {
+        $order->set_transaction_id( $transaction_id );
+    }
+
+    $order->update_status( 'completed', 'پرداخت موفق از طریق گرویتی فرم — شناسه تراکنش: ' . $transaction_id );
+    $order->save();
+}
+
+// گام ۳ - پرداخت ناموفق: سفارش را cancelled کن
+add_action( 'gform_post_payment_failed', 'carno_cancel_wc_order_on_payment_failure', 10, 2 );
+function carno_cancel_wc_order_on_payment_failure( $entry, $action ) {
+    if ( ! in_array( (int) rgar( $entry, 'form_id' ), [ 42, 43 ] ) ) return;
+
+    $order_id = gform_get_meta( $entry['id'], 'carno_wc_order_id' );
+    if ( ! $order_id ) return;
+
+    $order = wc_get_order( $order_id );
+    if ( ! $order ) return;
+
+    $order->update_status( 'cancelled', 'پرداخت ناموفق از طریق گرویتی فرم' );
+    $order->save();
 }
 
 // ============================================================================
