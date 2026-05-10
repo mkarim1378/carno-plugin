@@ -301,27 +301,47 @@ function carno_create_pending_wc_order_on_submission( $entry, $form ) {
     gform_update_meta( $entry['id'], 'carno_wc_order_id', $order->get_id() );
 }
 
-// تنظیم توضیحات تراکنش آقای پرداخت (نام مشتری + نام محصول)
-add_filter( 'Aqayepardakht_gform_aqayepardakht_gateway_desc_', 'carno_set_aqayepardakht_desc', 10, 3 );
-function carno_set_aqayepardakht_desc( $description, $form, $entry ) {
-    if ( ! in_array( (int) $form['id'], [ 42, 43 ] ) ) return $description;
+// تزریق توضیحات تراکنش آقای پرداخت قبل از ارسال به درگاه
+// gateway روی gform_confirmation با priority=1000 hook می‌کند؛ ما با 999 زودتر اجرا می‌شویم
+// و مقدار فیلد customer_fields_desc را در $_POST جایگزین می‌کنیم
+add_filter( 'gform_confirmation', 'carno_inject_aqayepardakht_desc', 999, 4 );
+function carno_inject_aqayepardakht_desc( $confirmation, $form, $entry, $ajax ) {
+    if ( ! in_array( (int) $form['id'], [ 42, 43 ] ) ) return $confirmation;
 
-    $full_name   = trim( rgar( $entry, '9' ) );
+    // خواندن feed config درگاه از جدول اختصاصی آقای پرداخت
+    global $wpdb;
+    $table   = $wpdb->prefix . 'gf_aqayepardakht';
+    $results = $wpdb->get_results(
+        $wpdb->prepare( "SELECT meta FROM $table WHERE form_id = %d AND is_active = 1 LIMIT 1", $form['id'] ),
+        ARRAY_A
+    );
+    if ( empty( $results ) ) return $confirmation;
+
+    $meta       = maybe_unserialize( $results[0]['meta'] );
+    $desc_field = isset( $meta['customer_fields_desc'] ) ? $meta['customer_fields_desc'] : '';
+    if ( ! $desc_field ) return $confirmation;
+
+    // ساخت توضیحات: نام مشتری + نام محصول
+    $full_name    = trim( rgar( $entry, '9' ) );
     $product_name = '';
 
-    $order_id = gform_get_meta( $entry['id'], 'carno_wc_order_id' );
-    if ( $order_id ) {
-        $order = wc_get_order( $order_id );
-        if ( $order ) {
-            foreach ( $order->get_items() as $item ) {
-                $product_name = $item->get_name();
-                break;
-            }
+    $product_id = url_to_postid( $entry['source_url'] );
+    if ( $product_id ) {
+        $product = wc_get_product( $product_id );
+        if ( $product ) {
+            $product_name = $product->get_name();
         }
     }
 
-    $parts = array_filter( [ $full_name, $product_name ] );
-    return ! empty( $parts ) ? implode( ' — ', $parts ) : $description;
+    $parts       = array_filter( [ $full_name, $product_name ] );
+    $description = implode( ' — ', $parts );
+
+    if ( $description ) {
+        $field_key          = 'input_' . str_replace( '.', '_', $desc_field );
+        $_POST[$field_key]  = $description;
+    }
+
+    return $confirmation;
 }
 
 // گام ۲ - پرداخت موفق: سفارش را completed کن
