@@ -255,6 +255,7 @@ function carno_create_pending_wc_order_on_submission( $entry, $form ) {
 
     // ثبت منشأ سفارش بدون اتصال به gateway نامعتبر
     $order->update_meta_data( '_created_via', 'gravity_forms' );
+    $order->set_payment_method_title( 'پرداخت از طریق فرم (آکادمی کارنو)' );
     $order->update_meta_data( '_gf_form_id', $form['id'] );
     $order->update_meta_data( '_gf_entry_id', $entry['id'] );
 
