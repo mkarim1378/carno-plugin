@@ -300,6 +300,29 @@ function carno_create_pending_wc_order_on_submission( $entry, $form ) {
     gform_update_meta( $entry['id'], 'carno_wc_order_id', $order->get_id() );
 }
 
+// تنظیم توضیحات تراکنش آقای پرداخت (نام مشتری + نام محصول)
+add_filter( 'Aqayepardakht_gform_aqayepardakht_gateway_desc_', 'carno_set_aqayepardakht_desc', 10, 3 );
+function carno_set_aqayepardakht_desc( $description, $form, $entry ) {
+    if ( ! in_array( (int) $form['id'], [ 42, 43 ] ) ) return $description;
+
+    $full_name   = trim( rgar( $entry, '9' ) );
+    $product_name = '';
+
+    $order_id = gform_get_meta( $entry['id'], 'carno_wc_order_id' );
+    if ( $order_id ) {
+        $order = wc_get_order( $order_id );
+        if ( $order ) {
+            foreach ( $order->get_items() as $item ) {
+                $product_name = $item->get_name();
+                break;
+            }
+        }
+    }
+
+    $parts = array_filter( [ $full_name, $product_name ] );
+    return ! empty( $parts ) ? implode( ' — ', $parts ) : $description;
+}
+
 // گام ۲ - پرداخت موفق: سفارش را completed کن
 add_action( 'gform_post_payment_completed', 'carno_complete_wc_order_on_payment', 10, 2 );
 function carno_complete_wc_order_on_payment( $entry, $action ) {
