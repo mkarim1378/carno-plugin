@@ -102,8 +102,6 @@ function create_user_from_guest_order_by_phone_v2($order_id) {
     echo "<p style='color:green;'>موفقیت: کاربر جدید '{$first_name} {$last_name}' (شناسه: {$user_id}) برای سفارش #{$order_id} ساخته شد.</p>";
 }
 
-add_action('woocommerce_new_order', 'create_user_from_guest_order_by_phone_v2');
-add_action('woocommerce_order_status_processing', 'create_user_from_guest_order_by_phone_v2');
 add_action('woocommerce_order_status_completed', 'create_user_from_guest_order_by_phone_v2');
 
 // ============================================================================
