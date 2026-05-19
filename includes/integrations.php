@@ -548,6 +548,9 @@ function carno_cancel_wc_order_on_payment_failure( $entry, $action ) {
     $order = wc_get_order( $order_id );
     if ( ! $order ) return;
 
+    // اگر ادمین سفارش را به حالت دیگری برده باشد، webhook دیرهنگام آن را override نکند
+    if ( $order->has_status( [ 'completed', 'processing', 'refunded', 'on-hold' ] ) ) return;
+
     $order->update_status( 'cancelled', 'پرداخت ناموفق از طریق گرویتی فرم' );
     $order->save();
 }

@@ -65,11 +65,8 @@ function create_user_from_guest_order_by_phone_v2($order_id) {
     $existing_user_id = user_exists_by_phone($phone);
     if ($existing_user_id) {
         $order->set_customer_id($existing_user_id);
-        update_post_meta($order_id, '_customer_user', $existing_user_id);
         $order->add_order_note('این سفارش به کاربر موجود با شماره تلفن متصل شد.');
         $order->save();
-
-        echo "<p style='color:blue;'>اطلاع: سفارش #{$order_id} به کاربر موجود (ID: {$existing_user_id}) وصل شد.</p>";
         return;
     }
 
@@ -86,7 +83,7 @@ function create_user_from_guest_order_by_phone_v2($order_id) {
     $user_id = wc_create_new_customer($email, $username, $password);
 
     if (is_wp_error($user_id)) {
-        echo "<p style='color:red;'>خطا در ساخت کاربر برای سفارش #{$order_id}: " . $user_id->get_error_message() . "</p>";
+        error_log('[Carno] Failed to create customer for order #' . $order_id . ': ' . $user_id->get_error_message());
         return;
     }
 
@@ -95,11 +92,8 @@ function create_user_from_guest_order_by_phone_v2($order_id) {
     wp_update_user(['ID' => $user_id, 'display_name' => trim($first_name . ' ' . $last_name)]);
 
     $order->set_customer_id($user_id);
-    update_post_meta($order_id, '_customer_user', $user_id);
     $order->add_order_note('یک حساب کاربری جدید به صورت خودکار برای این مشتری مهمان ایجاد شد و سفارش به آن متصل گردید.');
     $order->save();
-
-    echo "<p style='color:green;'>موفقیت: کاربر جدید '{$first_name} {$last_name}' (شناسه: {$user_id}) برای سفارش #{$order_id} ساخته شد.</p>";
 }
 
 add_action('woocommerce_order_status_completed', 'create_user_from_guest_order_by_phone_v2');
