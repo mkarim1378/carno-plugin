@@ -284,18 +284,30 @@ function carno_create_pending_wc_order_on_submission( $entry, $form ) {
         $order->update_meta_data( '_wc_order_attribution_source_type', 'direct' );
     }
 
+    // اعمال کد تخفیف (فیلد ۱۵ برای فرم ۴۲، فیلد ۱۹ برای فرم ۴۳)
+    $coupon_field_id = $is_online ? '19' : '15';
+    $coupon_code     = sanitize_text_field( trim( rgar( $entry, $coupon_field_id ) ) );
+    $coupon_note     = '';
+    if ( $coupon_code ) {
+        $coupon_result = $order->apply_coupon( $coupon_code );
+        $coupon_note   = is_wp_error( $coupon_result )
+            ? "\nکد تخفیف «{$coupon_code}» اعمال نشد: " . $coupon_result->get_error_message()
+            : "\nکد تخفیف «{$coupon_code}» اعمال شد";
+    }
+
     $order->calculate_totals();
     $order->set_status( 'pending' );
 
     // یادداشت سفارش با جزئیات ثبت‌نام
     $order->add_order_note(
         sprintf(
-            "ثبت‌نام از طریق فرم گرویتی — %s\nنام: %s\nموبایل: %s\nفرم: #%d (entry: #%d)",
+            "ثبت‌نام از طریق فرم گرویتی — %s\nنام: %s\nموبایل: %s\nفرم: #%d (entry: #%d)%s",
             $form_label,
             $full_name,
             $raw_phone,
             $form['id'],
-            $entry['id']
+            $entry['id'],
+            $coupon_note
         )
     );
 
@@ -346,6 +358,163 @@ function carno_inject_aqayepardakht_desc( $confirmation, $form, $entry, $ajax ) 
     }
 
     return $confirmation;
+}
+
+// ============================================================================
+// AJAX - ولیدیشن کد تخفیف ووکامرس برای فرم‌های GF
+add_action( 'wp_ajax_carno_validate_coupon', 'carno_ajax_validate_coupon' );
+add_action( 'wp_ajax_nopriv_carno_validate_coupon', 'carno_ajax_validate_coupon' );
+function carno_ajax_validate_coupon() {
+    check_ajax_referer( 'carno_coupon_nonce', 'nonce' );
+
+    $coupon_code   = sanitize_text_field( wp_unslash( $_POST['coupon_code'] ?? '' ) );
+    $product_id    = (int) ( $_POST['product_id'] ?? 0 );
+    $current_price = (float) ( $_POST['current_price'] ?? 0 );
+
+    if ( ! $coupon_code ) {
+        wp_send_json_error( [ 'message' => 'کد تخفیف را وارد کنید' ] );
+    }
+
+    $coupon = new WC_Coupon( $coupon_code );
+    if ( ! $coupon->get_id() ) {
+        wp_send_json_error( [ 'message' => 'کد تخفیف معتبر نیست' ] );
+    }
+
+    $expiry = $coupon->get_date_expires();
+    if ( $expiry && $expiry->getTimestamp() < time() ) {
+        wp_send_json_error( [ 'message' => 'کد تخفیف منقضی شده است' ] );
+    }
+
+    $usage_limit = $coupon->get_usage_limit();
+    if ( $usage_limit > 0 && $coupon->get_usage_count() >= $usage_limit ) {
+        wp_send_json_error( [ 'message' => 'این کد تخفیف به حد مجاز استفاده رسیده است' ] );
+    }
+
+    $product_ids = $coupon->get_product_ids();
+    if ( ! empty( $product_ids ) && ! in_array( $product_id, $product_ids ) ) {
+        wp_send_json_error( [ 'message' => 'این کد تخفیف برای این محصول معتبر نیست' ] );
+    }
+
+    $excluded = $coupon->get_excluded_product_ids();
+    if ( ! empty( $excluded ) && in_array( $product_id, $excluded ) ) {
+        wp_send_json_error( [ 'message' => 'این کد تخفیف برای این محصول قابل استفاده نیست' ] );
+    }
+
+    $amount   = (float) $coupon->get_amount();
+    $discount = ( $coupon->get_discount_type() === 'percent' )
+        ? $current_price * ( $amount / 100 )
+        : min( $amount, $current_price );
+    $new_price = max( 0, $current_price - $discount );
+
+    wp_send_json_success( [
+        'message'            => 'کد تخفیف با موفقیت اعمال شد',
+        'new_price'          => $new_price,
+        'discount_formatted' => number_format( (int) $discount, 0, '.', ',' ),
+        'new_price_formatted'=> number_format( (int) $new_price, 0, '.', ',' ),
+    ] );
+}
+
+// UI - دکمه اعمال کد تخفیف در فرم‌های GF دوره حضوری (42) و آنلاین (43)
+add_action( 'wp_footer', 'carno_gf_coupon_ui' );
+function carno_gf_coupon_ui() {
+    if ( ! is_product() ) return;
+    $nonce      = wp_create_nonce( 'carno_coupon_nonce' );
+    $product_id = get_the_ID();
+    ?>
+    <style>
+    .carno-coupon-wrap { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; }
+    .carno-coupon-btn { background:#2271b1; color:#fff; border:none; padding:8px 18px; border-radius:6px; cursor:pointer; font-size:14px; font-family:inherit; transition:opacity .2s; }
+    .carno-coupon-btn:disabled { opacity:.55; cursor:not-allowed; }
+    .carno-coupon-msg { width:100%; font-size:13px; margin-top:4px; line-height:1.6; }
+    </style>
+    <script>
+    (function() {
+        var FORMS = {
+            42: { couponField: 15, priceInput: '#ginput_base_price_42_14' },
+            43: { couponField: 19, priceInput: '#ginput_base_price_43_18' }
+        };
+        var AJAX_URL   = '<?php echo esc_js( admin_url( 'admin-ajax.php' ) ); ?>';
+        var NONCE      = '<?php echo esc_js( $nonce ); ?>';
+        var PRODUCT_ID = <?php echo (int) $product_id; ?>;
+
+        function initForm(formId, cfg) {
+            var el = document.querySelector('#input_' + formId + '_' + cfg.couponField);
+            if (!el) return;
+            var li = el.closest('li');
+            if (!li || li.querySelector('.carno-coupon-btn')) return;
+
+            var wrap = document.createElement('div');
+            wrap.className = 'carno-coupon-wrap';
+
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'carno-coupon-btn';
+            btn.textContent = 'اعمال کد تخفیف';
+
+            var msg = document.createElement('div');
+            msg.className = 'carno-coupon-msg';
+
+            wrap.appendChild(btn);
+            wrap.appendChild(msg);
+            li.appendChild(wrap);
+
+            btn.addEventListener('click', function() {
+                var code = el.value.trim();
+                if (!code) { msg.innerHTML = '<span style="color:#c00">کد تخفیف را وارد کنید</span>'; return; }
+
+                var priceEl = document.querySelector(cfg.priceInput);
+                var price   = priceEl ? parseFloat(priceEl.value) || 0 : 0;
+
+                btn.disabled = true;
+                btn.textContent = 'در حال بررسی...';
+                msg.innerHTML = '';
+
+                var fd = new FormData();
+                fd.append('action', 'carno_validate_coupon');
+                fd.append('nonce', NONCE);
+                fd.append('coupon_code', code);
+                fd.append('product_id', PRODUCT_ID);
+                fd.append('current_price', price);
+
+                fetch(AJAX_URL, { method: 'POST', body: fd })
+                    .then(function(r) { return r.json(); })
+                    .then(function(res) {
+                        if (res.success) {
+                            if (priceEl) {
+                                priceEl.value = res.data.new_price;
+                                ['change','keyup','input'].forEach(function(e) {
+                                    priceEl.dispatchEvent(new Event(e, { bubbles: true }));
+                                });
+                            }
+                            msg.innerHTML = '<span style="color:green">✓ ' + res.data.message + ' (' + res.data.discount_formatted + ' تومان تخفیف) — مبلغ قابل پرداخت: ' + res.data.new_price_formatted + ' تومان</span>';
+                            btn.textContent = '✓ اعمال شد';
+                            el.readOnly = true;
+                        } else {
+                            msg.innerHTML = '<span style="color:#c00">✗ ' + res.data.message + '</span>';
+                            btn.disabled = false;
+                            btn.textContent = 'اعمال کد تخفیف';
+                        }
+                    })
+                    .catch(function() {
+                        msg.innerHTML = '<span style="color:#c00">خطا در اتصال به سرور</span>';
+                        btn.disabled = false;
+                        btn.textContent = 'اعمال کد تخفیف';
+                    });
+            });
+        }
+
+        function initAll() {
+            Object.keys(FORMS).forEach(function(id) { initForm(+id, FORMS[id]); });
+        }
+
+        document.addEventListener('DOMContentLoaded', initAll);
+        document.addEventListener('gform_post_render', function(e) {
+            var id = (e.detail || {}).formId;
+            if (id && FORMS[id]) initForm(+id, FORMS[id]);
+        });
+    })();
+    </script>
+    <?php
 }
 
 // گام ۲ - پرداخت موفق: سفارش را completed کن
