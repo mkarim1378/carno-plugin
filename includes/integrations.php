@@ -517,31 +517,56 @@ function carno_gf_coupon_ui() {
     <?php
 }
 
-// گام ۲+۳ - بروزرسانی وضعیت سفارش بعد از بازگشت از درگاه آقای پرداخت
-// این gateway به جای gform_post_payment_completed/failed از gform_post_payment_status استفاده می‌کند
-// پارامترها: $config, $entry, $status ('completed'|'cancelled'|'failed'), $transaction_id, ...
-add_action( 'gform_post_payment_status', 'carno_handle_aqayepardakht_payment_status', 10, 8 );
-function carno_handle_aqayepardakht_payment_status( $config, $entry, $status, $transaction_id, $p5, $total, $p7, $p8 ) {
-    if ( ! in_array( (int) rgar( $entry, 'form_id' ), [ 42, 43 ] ) ) return;
+// تابع کمکی: پیدا کردن WC order مرتبط با GF entry
+function carno_get_wc_order_for_gf_entry( $entry_id ) {
+    // اول از GF meta می‌خوانیم
+    $order_id = gform_get_meta( $entry_id, 'carno_wc_order_id' );
 
-    $order_id = gform_get_meta( $entry['id'], 'carno_wc_order_id' );
-    if ( ! $order_id ) return;
-
-    $order = wc_get_order( $order_id );
-    if ( ! $order ) return;
-
-    if ( $status === 'completed' ) {
-        if ( $transaction_id ) {
-            $order->set_transaction_id( $transaction_id );
+    // fallback: اگه meta نبود، از meta خود WC می‌خوانیم
+    if ( ! $order_id ) {
+        $orders = wc_get_orders( [
+            'limit'      => 1,
+            'meta_key'   => '_gf_entry_id',
+            'meta_value' => $entry_id,
+        ] );
+        if ( ! empty( $orders ) ) {
+            $order_id = $orders[0]->get_id();
         }
-        $order->update_status( 'completed', 'پرداخت موفق از طریق آقای پرداخت — شناسه تراکنش: ' . $transaction_id );
-    } else {
-        // جلوگیری از override کردن سفارش‌هایی که قبلاً تکمیل شده‌اند
-        if ( $order->has_status( 'completed' ) ) return;
-        $label = ( $status === 'cancelled' ) ? 'منصرف شده' : 'ناموفق';
-        $order->update_status( 'cancelled', 'پرداخت ' . $label . ' از طریق آقای پرداخت' );
     }
 
+    return $order_id ? wc_get_order( $order_id ) : null;
+}
+
+// گام ۲ - پرداخت موفق: hook اصلی این gateway برای تکمیل پرداخت
+// gform_aqayepardakht_fulfillment فقط برای پرداخت‌های موفق fire می‌شود
+// پارامترها: ($entry, $config, $transaction_id, $total)
+add_action( 'gform_aqayepardakht_fulfillment', 'carno_handle_aqayepardakht_success', 10, 4 );
+function carno_handle_aqayepardakht_success( $entry, $config, $transaction_id, $total ) {
+    if ( ! in_array( (int) rgar( $entry, 'form_id' ), [ 42, 43 ] ) ) return;
+
+    $order = carno_get_wc_order_for_gf_entry( $entry['id'] );
+    if ( ! $order ) return;
+
+    if ( $transaction_id ) {
+        $order->set_transaction_id( $transaction_id );
+    }
+    $order->update_status( 'completed', 'پرداخت موفق از طریق آقای پرداخت — شناسه تراکنش: ' . $transaction_id );
+    $order->save();
+}
+
+// گام ۳ - پرداخت ناموفق/لغو شده
+// gform_post_payment_status برای همه وضعیت‌ها fire می‌شود
+// پارامترها: ($config, $entry, $status, $transaction_id, '', $total, '', '')
+add_action( 'gform_post_payment_status', 'carno_handle_aqayepardakht_failure', 10, 8 );
+function carno_handle_aqayepardakht_failure( $config, $entry, $status, $transaction_id, $p5, $total, $p7, $p8 ) {
+    if ( ! in_array( (int) rgar( $entry, 'form_id' ), [ 42, 43 ] ) ) return;
+    if ( $status === 'completed' ) return; // موفقیت توسط gform_aqayepardakht_fulfillment هندل می‌شه
+
+    $order = carno_get_wc_order_for_gf_entry( $entry['id'] );
+    if ( ! $order || $order->has_status( 'completed' ) ) return;
+
+    $label = ( $status === 'cancelled' ) ? 'منصرف شده' : 'ناموفق';
+    $order->update_status( 'cancelled', 'پرداخت ' . $label . ' از طریق آقای پرداخت' );
     $order->save();
 }
 
