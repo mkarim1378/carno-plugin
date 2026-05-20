@@ -517,9 +517,11 @@ function carno_gf_coupon_ui() {
     <?php
 }
 
-// گام ۲ - پرداخت موفق: سفارش را completed کن
-add_action( 'gform_post_payment_completed', 'carno_complete_wc_order_on_payment', 10, 2 );
-function carno_complete_wc_order_on_payment( $entry, $action ) {
+// گام ۲+۳ - بروزرسانی وضعیت سفارش بعد از بازگشت از درگاه آقای پرداخت
+// این gateway به جای gform_post_payment_completed/failed از gform_post_payment_status استفاده می‌کند
+// پارامترها: $config, $entry, $status ('completed'|'cancelled'|'failed'), $transaction_id, ...
+add_action( 'gform_post_payment_status', 'carno_handle_aqayepardakht_payment_status', 10, 8 );
+function carno_handle_aqayepardakht_payment_status( $config, $entry, $status, $transaction_id, $p5, $total, $p7, $p8 ) {
     if ( ! in_array( (int) rgar( $entry, 'form_id' ), [ 42, 43 ] ) ) return;
 
     $order_id = gform_get_meta( $entry['id'], 'carno_wc_order_id' );
@@ -528,30 +530,18 @@ function carno_complete_wc_order_on_payment( $entry, $action ) {
     $order = wc_get_order( $order_id );
     if ( ! $order ) return;
 
-    $transaction_id = rgar( $action, 'transaction_id' );
-    if ( $transaction_id ) {
-        $order->set_transaction_id( $transaction_id );
+    if ( $status === 'completed' ) {
+        if ( $transaction_id ) {
+            $order->set_transaction_id( $transaction_id );
+        }
+        $order->update_status( 'completed', 'پرداخت موفق از طریق آقای پرداخت — شناسه تراکنش: ' . $transaction_id );
+    } else {
+        // جلوگیری از override کردن سفارش‌هایی که قبلاً تکمیل شده‌اند
+        if ( $order->has_status( 'completed' ) ) return;
+        $label = ( $status === 'cancelled' ) ? 'منصرف شده' : 'ناموفق';
+        $order->update_status( 'cancelled', 'پرداخت ' . $label . ' از طریق آقای پرداخت' );
     }
 
-    $order->update_status( 'completed', 'پرداخت موفق از طریق گرویتی فرم — شناسه تراکنش: ' . $transaction_id );
-    $order->save();
-}
-
-// گام ۳ - پرداخت ناموفق: سفارش را cancelled کن
-add_action( 'gform_post_payment_failed', 'carno_cancel_wc_order_on_payment_failure', 10, 2 );
-function carno_cancel_wc_order_on_payment_failure( $entry, $action ) {
-    if ( ! in_array( (int) rgar( $entry, 'form_id' ), [ 42, 43 ] ) ) return;
-
-    $order_id = gform_get_meta( $entry['id'], 'carno_wc_order_id' );
-    if ( ! $order_id ) return;
-
-    $order = wc_get_order( $order_id );
-    if ( ! $order ) return;
-
-    // اگر ادمین سفارش را به حالت دیگری برده باشد، webhook دیرهنگام آن را override نکند
-    if ( $order->has_status( [ 'completed', 'processing', 'refunded', 'on-hold' ] ) ) return;
-
-    $order->update_status( 'cancelled', 'پرداخت ناموفق از طریق گرویتی فرم' );
     $order->save();
 }
 
