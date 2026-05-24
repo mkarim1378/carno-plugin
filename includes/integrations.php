@@ -284,6 +284,7 @@ function carno_create_pending_wc_order_on_submission( $entry, $form ) {
         $order->update_meta_data( '_wc_order_attribution_source_type', 'direct' );
     }
 
+    /*
     // اعمال کد تخفیف (فیلد ۱۵ برای فرم ۴۲، فیلد ۱۹ برای فرم ۴۳)
     $coupon_field_id = $is_online ? '19' : '15';
     $coupon_code     = sanitize_text_field( trim( rgar( $entry, $coupon_field_id ) ) );
@@ -294,6 +295,8 @@ function carno_create_pending_wc_order_on_submission( $entry, $form ) {
             ? "\nکد تخفیف «{$coupon_code}» اعمال نشد: " . $coupon_result->get_error_message()
             : "\nکد تخفیف «{$coupon_code}» اعمال شد";
     }
+    */
+    $coupon_note = '';
 
     $order->calculate_totals();
     $order->set_status( 'pending' );
@@ -362,6 +365,7 @@ function carno_inject_aqayepardakht_desc( $confirmation, $form, $entry, $ajax ) 
 
 // ============================================================================
 // AJAX - ولیدیشن کد تخفیف ووکامرس برای فرم‌های GF
+/* -- غیرفعال شده --
 add_action( 'wp_ajax_carno_validate_coupon', 'carno_ajax_validate_coupon' );
 add_action( 'wp_ajax_nopriv_carno_validate_coupon', 'carno_ajax_validate_coupon' );
 function carno_ajax_validate_coupon() {
@@ -413,8 +417,10 @@ function carno_ajax_validate_coupon() {
         'new_price_formatted'=> number_format( (int) $new_price, 0, '.', ',' ),
     ] );
 }
+-- */
 
 // UI - دکمه اعمال کد تخفیف در فرم‌های GF دوره حضوری (42) و آنلاین (43)
+/* -- غیرفعال شده --
 add_action( 'wp_footer', 'carno_gf_coupon_ui' );
 function carno_gf_coupon_ui() {
     if ( ! is_product() ) return;
@@ -516,6 +522,7 @@ function carno_gf_coupon_ui() {
     </script>
     <?php
 }
+-- */
 
 // تابع کمکی: پیدا کردن WC order مرتبط با GF entry
 function carno_get_wc_order_for_gf_entry( $entry_id ) {
@@ -537,37 +544,40 @@ function carno_get_wc_order_for_gf_entry( $entry_id ) {
     return $order_id ? wc_get_order( $order_id ) : null;
 }
 
-// گام ۲ - پرداخت موفق: hook اصلی این gateway برای تکمیل پرداخت
-// gform_aqayepardakht_fulfillment فقط برای پرداخت‌های موفق fire می‌شود
-// پارامترها: ($entry, $config, $transaction_id, $total)
+// گام ۲ - پرداخت موفق: hook اولیه gateway — به عنوان early handler
+// اگر این hook به هر دلیلی order را آپدیت نکند، گام ۳ به عنوان backup عمل می‌کند
 add_action( 'gform_aqayepardakht_fulfillment', 'carno_handle_aqayepardakht_success', 10, 4 );
 function carno_handle_aqayepardakht_success( $entry, $config, $transaction_id, $total ) {
     if ( ! in_array( (int) rgar( $entry, 'form_id' ), [ 42, 43 ] ) ) return;
-
-    $order = carno_get_wc_order_for_gf_entry( $entry['id'] );
-    if ( ! $order ) return;
-
-    if ( $transaction_id ) {
-        $order->set_transaction_id( $transaction_id );
-    }
-    $order->update_status( 'completed', 'پرداخت موفق از طریق آقای پرداخت — شناسه تراکنش: ' . $transaction_id );
-    $order->save();
+    carno_set_gf_order_status( $entry['id'], 'completed', $transaction_id );
 }
 
-// گام ۳ - پرداخت ناموفق/لغو شده
-// gform_post_payment_status برای همه وضعیت‌ها fire می‌شود
-// پارامترها: ($config, $entry, $status, $transaction_id, '', $total, '', '')
-add_action( 'gform_post_payment_status', 'carno_handle_aqayepardakht_failure', 10, 8 );
-function carno_handle_aqayepardakht_failure( $config, $entry, $status, $transaction_id, $p5, $total, $p7, $p8 ) {
+// گام ۳ - handler یکپارچه برای همه وضعیت‌های پرداخت
+// این hook همیشه fire می‌شود (موفق، لغو، ناموفق) و به عنوان backup موفق نیز عمل می‌کند
+add_action( 'gform_post_payment_status', 'carno_handle_gf_payment_status', 10, 8 );
+function carno_handle_gf_payment_status( $config, $entry, $status, $transaction_id, $p5, $total, $p7, $p8 ) {
     if ( ! in_array( (int) rgar( $entry, 'form_id' ), [ 42, 43 ] ) ) return;
-    if ( $status === 'completed' ) return; // موفقیت توسط gform_aqayepardakht_fulfillment هندل می‌شه
+    carno_set_gf_order_status( $entry['id'], $status, $transaction_id );
+}
 
-    $order = carno_get_wc_order_for_gf_entry( $entry['id'] );
-    if ( ! $order || $order->has_status( 'completed' ) ) return;
+// تابع کمکی: تنظیم وضعیت سفارش WC بر اساس نتیجه پرداخت GF
+function carno_set_gf_order_status( $entry_id, $status, $transaction_id ) {
+    $order = carno_get_wc_order_for_gf_entry( $entry_id );
+    if ( ! $order ) return;
 
+    if ( $status === 'completed' ) {
+        if ( $order->has_status( 'completed' ) ) return;
+        if ( $transaction_id ) {
+            $order->set_transaction_id( $transaction_id );
+        }
+        $order->update_status( 'completed', 'پرداخت موفق از طریق آقای پرداخت — شناسه تراکنش: ' . $transaction_id );
+        return;
+    }
+
+    // لغو یا ناموفق — فقط اگر سفارش هنوز تکمیل نشده باشد
+    if ( $order->has_status( 'completed' ) ) return;
     $label = ( $status === 'cancelled' ) ? 'منصرف شده' : 'ناموفق';
     $order->update_status( 'cancelled', 'پرداخت ' . $label . ' از طریق آقای پرداخت' );
-    $order->save();
 }
 
 // ============================================================================

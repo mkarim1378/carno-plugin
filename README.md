@@ -3,7 +3,7 @@
 ## اطلاعات کلی افزونه
 
 - **نام افزونه**: Carno Customization Plugin
-- **نسخه**: 2.1.2
+- **نسخه**: 2.1.3
 - **نویسنده**: سپهر علیمحمدی
 - **آدرس**: https://sepehralimohammadi.com/
 - **توضیحات**: افزونه شخصی‌سازی برای وبسایت آکادمی کارنو (آموزشگاه برق خودرو)
@@ -242,10 +242,10 @@ function carno_get_dynamic_price(...)     // قیمت داینامیک برای 
 | مرحله | Hook | نتیجه |
 |---|---|---|
 | ارسال فرم | `gform_after_submission` | سفارش با وضعیت `pending` ساخته می‌شود |
-| پرداخت موفق | `gform_post_payment_completed` | وضعیت → `completed` |
-| پرداخت ناموفق | `gform_post_payment_failed` | وضعیت → `cancelled` |
+| پرداخت موفق | `gform_aqayepardakht_fulfillment` (primary) + `gform_post_payment_status` (backup) | وضعیت → `completed` |
+| پرداخت لغو/ناموفق | `gform_post_payment_status` | وضعیت → `cancelled` |
 
-آیدی سفارش با `gform_update_meta` در entry ذخیره می‌شود تا hook های بعدی بتوانند آن را پیدا کنند.
+هر دو hook موفق از `carno_set_gf_order_status()` استفاده می‌کنند. تابع idempotent است — اگر سفارش قبلاً `completed` شده باشد، دوباره تغییر نمی‌دهد. آیدی سفارش با `gform_update_meta` در entry ذخیره می‌شود تا hook های بعدی بتوانند آن را پیدا کنند.
 
 - فرم `21` — پر کردن چک‌باکس با محصولات خریداری شده کاربر (کش 1 ساعته)
 - فرم `22` — تغییر متن دکمه «بعدی» به «دانلود فیلم وبینار»
