@@ -3,99 +3,50 @@
 // یکپارچه‌سازی‌ها - Elementor، Gravity Forms، Rank Math، Voorodak
 // ============================================================================
 
-// نمایش تمپلیت درخواست لایسنس در صفحه مشاهده سفارش (per-product)
-add_action( 'woocommerce_order_details_before_order_table', 'display_elementor_template_before_order_details_table' );
-function display_elementor_template_before_order_details_table( $order ) {
-    $tpl_rules = get_option( 'carno_template_licenses', null );
+// نمایش تمپلیت Elementor بعد از خرید — یکپارچه برای صفحه تشکر و مشاهده سفارش
+// منطق: تمپلیت پیش‌فرض برای همه محصولات؛ جدول استثناها override می‌کند (0 = نمایش نده)
+add_action( 'woocommerce_order_details_before_order_table', 'carno_show_order_templates' );
+function carno_show_order_templates( $order ) {
+    if ( ! $order ) return;
 
-    // Fallback: اگه تنظیمات جدید هنوز ست نشده، از گزینه قدیمی استفاده می‌کنیم
-    if ( $tpl_rules === null ) {
-        $tpl = (int) get_option( 'carno_template_license', 37026 );
-        if ( $tpl ) echo do_shortcode( '[elementor-template id="' . $tpl . '"]' );
-        return;
+    $default_tpl  = (int) get_option( 'carno_template_default_tpl', 37026 );
+    $exceptions   = (array) get_option( 'carno_template_licenses', [] );
+
+    $override_map = [];
+    foreach ( $exceptions as $rule ) {
+        $pid = (int) ( $rule['product_id'] ?? 0 );
+        if ( $pid > 0 ) {
+            $override_map[ $pid ] = (int) ( $rule['template_id'] ?? 0 );
+        }
     }
-
-    if ( empty( $tpl_rules ) ) return;
 
     $order_pids = [];
     foreach ( $order->get_items() as $item ) {
         $p = $item->get_product();
         if ( ! $p ) continue;
-        $order_pids[] = $p->get_id();
-        if ( $p->is_type( 'variation' ) ) {
-            $order_pids[] = $p->get_parent_id();
+        $pid = $p->is_type( 'variation' ) ? $p->get_parent_id() : $p->get_id();
+        if ( $pid ) $order_pids[] = $pid;
+    }
+    $order_pids = array_unique( $order_pids );
+
+    $tpls = [];
+    if ( empty( $order_pids ) ) {
+        if ( $default_tpl ) $tpls[] = $default_tpl;
+    } else {
+        foreach ( $order_pids as $pid ) {
+            if ( array_key_exists( $pid, $override_map ) ) {
+                $tpl = $override_map[ $pid ];
+                if ( $tpl > 0 ) $tpls[] = $tpl;
+            } else {
+                if ( $default_tpl > 0 ) $tpls[] = $default_tpl;
+            }
         }
     }
-    $order_pids = array_unique( array_filter( $order_pids ) );
 
-    $shown = [];
-    foreach ( $tpl_rules as $rule ) {
-        $pid = (int) ( $rule['product_id'] ?? 0 );
-        $tpl = (int) ( $rule['template_id'] ?? 0 );
-        if ( ! $tpl || ! $pid ) continue;
-        if ( in_array( $pid, $order_pids ) && ! in_array( $tpl, $shown ) ) {
-            echo do_shortcode( '[elementor-template id="' . $tpl . '"]' );
-            $shown[] = $tpl;
-        }
+    foreach ( array_unique( $tpls ) as $tpl ) {
+        echo do_shortcode( '[elementor-template id="' . $tpl . '"]' );
     }
 }
-
-// ============================================================================
-// نمایش باکس VIP بعد از خرید دوره کرهای
-function display_custom_order_content( $order ) {
-    if ( ! $order ) return;
-
-    $vip_variation_id = (int) get_option( 'carno_vip_variation_id', 41078 );
-    $vip_product_id   = (int) get_option( 'carno_vip_product_id',   41077 );
-    $show_vip_box     = false;
-
-    foreach ( $order->get_items() as $item ) {
-        $product = $item->get_product();
-        if ( ! $product ) continue;
-
-        $variation_id = $item->get_variation_id();
-        if ( $variation_id && $variation_id === $vip_variation_id ) {
-            $show_vip_box = true;
-            break;
-        }
-
-        if ( $product->get_id() === $vip_product_id ) {
-            $show_vip_box = true;
-            break;
-        }
-    }
-
-    if ( $show_vip_box ) : ?>
-        <style>
-        .vip-box {margin:30px auto;padding:25px;border-radius:15px;border:1px solid #e0e0e0;background:#f9f9f9;box-shadow:0 4px 12px rgba(0,0,0,0.08);text-align:center;}
-        .vip-box h2 {font-size:22px;margin-bottom:15px;color:#2d2c74;}
-        .vip-box p {font-size:16px;margin-bottom:20px;color:#2d2c74;line-height:1.9em;}
-        .vip-box .btn-group {display:flex;justify-content:center;gap:15px;flex-wrap:wrap;}
-        .vip-box .btn-link {padding:12px 20px;border-radius:8px;text-decoration:none;font-size:16px;font-weight:600;color:#fff;transition:all .3s ease;}
-        .vip-box .btn-vip {background:#ed1c24}
-        .vip-box .btn-vip:hover {background:#e4571b;}
-        </style>
-        <div class="vip-box">
-            <h2>🎉 خرید شما با موفقیت انجام شد</h2>
-            <p>از اینکه به جمع کارآموزان دوره <b>برق، انژکتور و آپشنال خودروهای کره‌ای</b> پیوستید، به شما تبریک می‌گوییم!</p>
-            <p>اکنون می‌توانید از طریق لینک‌های زیر به محتوای ویژه آموزشی دسترسی پیدا کنید و در کانال تلگرام دوره عضو شوید.</p>
-            <div class="btn-group">
-                <a href="https://www.instagram.com/carno_koreancar_vip" target="_blank" class="btn-link btn-vip">ورود به پیج VIP</a>
-                <a href="https://t.me/+NvZGndsi6mRjYTM0" target="_blank" class="btn-link btn-vip">عضویت در کانال تلگرام</a>
-            </div>
-        </div>
-    <?php endif;
-}
-
-add_action( 'woocommerce_thankyou', function( $order_id ) {
-    if ( ! $order_id ) return;
-    if ( $order = wc_get_order( $order_id ) ) display_custom_order_content( $order );
-}, 5 );
-
-add_action( 'woocommerce_view_order', function( $order_id ) {
-    if ( ! $order_id ) return;
-    if ( $order = wc_get_order( $order_id ) ) display_custom_order_content( $order );
-}, 5 );
 
 // ============================================================================
 // Gravity Forms - پر کردن فیلد محصولات خریداری شده

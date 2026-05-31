@@ -196,20 +196,21 @@ function carno_handle_save_settings() {
     update_option( 'carno_hide_price_hour', absint( $_POST['carno_hide_price_hour'] ?? 16 ) );
     update_option( 'carno_timer_css_class', sanitize_text_field( $_POST['carno_timer_css_class'] ?? 'daily-timer' ) );
 
-    // تمپلیت‌های لایسنس — چند محصول، چند تمپلیت
-    $tpl_licenses = [];
+    // تمپلیت پیش‌فرض
+    update_option( 'carno_template_default_tpl', absint( $_POST['carno_template_default_tpl'] ?? 0 ) );
+
+    // استثناها per-product (template_id می‌تواند صفر باشد = نمایش نده)
+    $tpl_exceptions = [];
     foreach ( (array) ( $_POST['tpl_pid'] ?? [] ) as $i => $pid ) {
         $pid = absint( $pid );
-        $tpl = absint( $_POST['tpl_id'][ $i ] ?? 0 );
-        if ( $pid > 0 && $tpl > 0 ) {
-            $tpl_licenses[] = [ 'product_id' => $pid, 'template_id' => $tpl ];
+        if ( $pid > 0 ) {
+            $tpl_exceptions[] = [
+                'product_id'  => $pid,
+                'template_id' => absint( $_POST['tpl_id'][ $i ] ?? 0 ),
+            ];
         }
     }
-    update_option( 'carno_template_licenses', $tpl_licenses );
-
-    // VIP
-    update_option( 'carno_vip_product_id',   absint( $_POST['carno_vip_product_id']   ?? 0 ) );
-    update_option( 'carno_vip_variation_id', absint( $_POST['carno_vip_variation_id'] ?? 0 ) );
+    update_option( 'carno_template_licenses', $tpl_exceptions );
 
     // چک‌اوت
     $addr_ids = [];
@@ -241,9 +242,8 @@ function carno_render_settings_page() {
     $packages               = get_option( 'carno_packages',                  $d['packages'] );
     $hide_price_hour        = get_option( 'carno_hide_price_hour',           16 );
     $timer_css_class        = get_option( 'carno_timer_css_class',           'daily-timer' );
-    $tpl_licenses           = get_option( 'carno_template_licenses',         [] );
-    $vip_product_id         = get_option( 'carno_vip_product_id',            41077 );
-    $vip_variation_id       = get_option( 'carno_vip_variation_id',          41078 );
+    $default_tpl            = get_option( 'carno_template_default_tpl',      37026 );
+    $tpl_exceptions         = get_option( 'carno_template_licenses',          [] );
     $address_required_prods = get_option( 'carno_address_required_products', [ 13534 ] );
     $coupon_label           = get_option( 'carno_coupon_label',              'سود شما از این خرید' );
 
@@ -418,23 +418,37 @@ function carno_render_settings_page() {
 
             <?php // ── TAB: محصولات و تمپلیت‌ها ── ?>
             <div class="carno-tab-panel<?php echo $active_tab === 'products' ? ' is-active' : ''; ?>" data-panel="products">
-                <h2>محصولات و تمپلیت‌های Elementor</h2>
+                <h2>تمپلیت‌های نمایش پس از خرید</h2>
+                <p class="description">این تمپلیت‌ها در صفحه تشکر و صفحه مشاهده سفارش (قبل از جدول آیتم‌ها) نمایش داده می‌شوند.</p>
 
-                <h3>تمپلیت‌های درخواست لایسنس</h3>
-                <p class="description">برای هر محصول، تمپلیت Elementor متناظر را مشخص کنید. قبل از جدول سفارش در صفحه «مشاهده سفارش» نمایش داده می‌شود.</p>
+                <h3>تمپلیت پیش‌فرض</h3>
+                <p class="description">برای تمام سفارش‌ها نمایش داده می‌شود، مگر محصولاتی که در جدول استثناها تعریف شده‌اند.</p>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row">شناسه تمپلیت Elementor</th>
+                        <td>
+                            <input type="number" name="carno_template_default_tpl" value="<?php echo esc_attr( $default_tpl ); ?>" class="small-text" min="0">
+                            <p class="description">صفر = هیچ تمپلیتی به صورت پیش‌فرض نمایش داده نمی‌شود.</p>
+                        </td>
+                    </tr>
+                </table>
+
+                <hr>
+                <h3>استثناها (per-product override)</h3>
+                <p class="description">برای محصولات لیست‌شده، به جای تمپلیت پیش‌فرض، تمپلیت مشخص‌شده نمایش داده می‌شود. شناسه صفر = هیچ تمپلیتی نمایش نده.</p>
                 <table class="wp-list-table widefat fixed striped carno-repeater-table" id="tpl-table">
                     <thead>
                         <tr>
                             <th>محصول</th>
-                            <th style="width:200px">شناسه تمپلیت Elementor</th>
+                            <th style="width:220px">شناسه تمپلیت (۰ = نمایش ندهد)</th>
                             <th style="width:60px"></th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ( $tpl_licenses as $row ) : ?>
+                        <?php foreach ( $tpl_exceptions as $row ) : ?>
                         <tr>
                             <td><?php carno_product_select( 'tpl_pid[]', $row['product_id'], $products, 'products', 'width:100%' ); ?></td>
-                            <td><input type="number" name="tpl_id[]" value="<?php echo esc_attr( $row['template_id'] ); ?>" style="width:100%;box-sizing:border-box"></td>
+                            <td><input type="number" name="tpl_id[]" value="<?php echo esc_attr( $row['template_id'] ); ?>" style="width:100%;box-sizing:border-box" min="0"></td>
                             <td><button type="button" class="button carno-remove-row">حذف</button></td>
                         </tr>
                         <?php endforeach; ?>
@@ -443,25 +457,8 @@ function carno_render_settings_page() {
                 <button type="button" class="button carno-add-row"
                     data-table="tpl-table" data-row-type="template"
                     data-pid-name="tpl_pid[]" data-tpl-name="tpl_id[]" data-mode="products">
-                    + افزودن ردیف
+                    + افزودن استثنا
                 </button>
-
-                <hr>
-                <h3>باکس VIP کرهای</h3>
-                <p class="description">پس از خرید این محصول / وارییشن، باکس لینک‌های VIP در صفحه تشکر نمایش داده می‌شود.</p>
-                <table class="form-table">
-                    <tr>
-                        <th scope="row">محصول VIP</th>
-                        <td><?php carno_product_select( 'carno_vip_product_id', $vip_product_id, $products, 'products', 'min-width:300px' ); ?></td>
-                    </tr>
-                    <tr>
-                        <th scope="row">وارییشن VIP</th>
-                        <td>
-                            <?php carno_product_select( 'carno_vip_variation_id', $vip_variation_id, $products, 'vars_only', 'min-width:300px' ); ?>
-                            <p class="description">وارییشنی که خرید آن باکس VIP را نمایش می‌دهد.</p>
-                        </td>
-                    </tr>
-                </table>
             </div>
 
             <?php // ── TAB: چک‌اوت ── ?>
