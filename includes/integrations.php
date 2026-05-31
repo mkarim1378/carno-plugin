@@ -11,45 +11,31 @@ function display_elementor_template_before_order_details_table( $order ) {
 }
 
 // ============================================================================
-// نمایش محتوای سفارش بعد از خرید دوره‌های حضوری یا VIP
-function display_custom_order_content($order) {
-    if (!$order) return;
+// نمایش باکس VIP بعد از خرید دوره کرهای
+function display_custom_order_content( $order ) {
+    if ( ! $order ) return;
 
-    $show_vip_box = $show_form = false;
+    $vip_variation_id = (int) get_option( 'carno_vip_variation_id', 41078 );
+    $vip_product_id   = (int) get_option( 'carno_vip_product_id',   41077 );
+    $show_vip_box     = false;
 
-    foreach ($order->get_items() as $item) {
+    foreach ( $order->get_items() as $item ) {
         $product = $item->get_product();
-        if (!$product) continue;
+        if ( ! $product ) continue;
 
-        if ($product->is_type('variable')) {
-            $variation_id = $item->get_variation_id();
-            if ($variation_id) {
-                $variation = wc_get_product($variation_id);
-                if ($variation) {
-                    $course_type = $variation->get_attribute('pa_course_type');
-
-                    if ($course_type && strpos(strtolower($course_type), 'حضوری') !== false) {
-                        $show_form = true;
-                    }
-                }
-            }
-        }
-
-        $variation_id     = $item->get_variation_id();
-        $vip_variation_id = (int) get_option( 'carno_vip_variation_id', 41078 );
+        $variation_id = $item->get_variation_id();
         if ( $variation_id && $variation_id === $vip_variation_id ) {
             $show_vip_box = true;
+            break;
         }
 
-        $product_id       = $product->get_id();
-        $vip_product_id   = (int) get_option( 'carno_vip_product_id', 41077 );
-        $form_product_ids = array_map( 'intval', (array) get_option( 'carno_onsite_product_ids', [ 13832, 14259 ] ) );
-
-        if ( $product_id === $vip_product_id ) $show_vip_box = true;
-        if ( in_array( $product_id, $form_product_ids ) ) $show_form = true;
+        if ( $product->get_id() === $vip_product_id ) {
+            $show_vip_box = true;
+            break;
+        }
     }
 
-    if ($show_vip_box) : ?>
+    if ( $show_vip_box ) : ?>
         <style>
         .vip-box {margin:30px auto;padding:25px;border-radius:15px;border:1px solid #e0e0e0;background:#f9f9f9;box-shadow:0 4px 12px rgba(0,0,0,0.08);text-align:center;}
         .vip-box h2 {font-size:22px;margin-bottom:15px;color:#2d2c74;}
@@ -69,42 +55,17 @@ function display_custom_order_content($order) {
             </div>
         </div>
     <?php endif;
-
-    if ($show_form) {
-        echo '<div class="custom-form" style="margin-top:30px;">';
-        $tpl_onsite = (int) get_option( 'carno_template_onsite_form', 31944 );
-        if ( $tpl_onsite ) echo do_shortcode( '[elementor-template id="' . $tpl_onsite . '"]' );
-        echo '</div>';
-    }
 }
 
-add_action('woocommerce_thankyou', function($order_id) {
-    if (!$order_id) return;
-    if ($order = wc_get_order($order_id)) display_custom_order_content($order);
-}, 5);
-
-add_action('woocommerce_view_order', function($order_id) {
-    if (!$order_id) return;
-    if ($order = wc_get_order($order_id)) display_custom_order_content($order);
-}, 5);
-
-// ============================================================================
-// نمایش باکس پشتیبانی کارمپ بعد از خرید محصول 39576
-add_action( 'woocommerce_thankyou', 'show_elementor_template_after_specific_product_purchase', 10, 1 );
-function show_elementor_template_after_specific_product_purchase( $order_id ) {
+add_action( 'woocommerce_thankyou', function( $order_id ) {
     if ( ! $order_id ) return;
-    $target_product_id = (int) get_option( 'carno_karamp_product_id', 39576 );
-    $tpl_karamp        = (int) get_option( 'carno_template_karamp',   40177 );
-    $order = wc_get_order( $order_id );
-    if ( ! $order ) return;
+    if ( $order = wc_get_order( $order_id ) ) display_custom_order_content( $order );
+}, 5 );
 
-    foreach ( $order->get_items() as $item ) {
-        if ( $tpl_karamp && $item->get_product_id() === $target_product_id ) {
-            echo do_shortcode( '[elementor-template id="' . $tpl_karamp . '"]' );
-            break;
-        }
-    }
-}
+add_action( 'woocommerce_view_order', function( $order_id ) {
+    if ( ! $order_id ) return;
+    if ( $order = wc_get_order( $order_id ) ) display_custom_order_content( $order );
+}, 5 );
 
 // ============================================================================
 // Gravity Forms - پر کردن فیلد محصولات خریداری شده

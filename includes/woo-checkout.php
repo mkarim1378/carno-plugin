@@ -5,12 +5,12 @@
 
 // فیلدهای صورتحساب: فقط نام و موبایل (+ آدرس برای محصول 13534)
 function customize_checkout_fields($fields) {
-    $addr_products    = (array) get_option( 'carno_address_required_products', [ 13534 ] );
-    $has_product_13534 = false;
+    $addr_products      = array_map( 'intval', (array) get_option( 'carno_address_required_products', [ 13534 ] ) );
+    $needs_address      = false;
     if ( WC()->cart && ! WC()->cart->is_empty() ) {
         foreach ( WC()->cart->get_cart() as $cart_item ) {
-            if ( isset( $cart_item['product_id'] ) && in_array( (int) $cart_item['product_id'], array_map( 'intval', $addr_products ) ) ) {
-                $has_product_13534 = true;
+            if ( isset( $cart_item['product_id'] ) && in_array( (int) $cart_item['product_id'], $addr_products ) ) {
+                $needs_address = true;
                 break;
             }
         }
@@ -34,7 +34,7 @@ function customize_checkout_fields($fields) {
         'priority' => 10,
     );
 
-    if ($has_product_13534) {
+    if ( $needs_address ) {
         $fields['billing']['billing_address_1'] = array(
             'label'       => 'آدرس پستی',
             'required'    => true,

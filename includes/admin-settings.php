@@ -99,10 +99,6 @@ function carno_handle_save_settings() {
     update_option( 'carno_template_license',     absint( $_POST['carno_template_license']     ?? 0 ) );
     update_option( 'carno_vip_product_id',       absint( $_POST['carno_vip_product_id']       ?? 0 ) );
     update_option( 'carno_vip_variation_id',     absint( $_POST['carno_vip_variation_id']     ?? 0 ) );
-    update_option( 'carno_onsite_product_ids',   array_values( array_filter( array_map( 'absint', explode( ',', sanitize_text_field( $_POST['carno_onsite_product_ids'] ?? '' ) ) ) ) ) );
-    update_option( 'carno_template_onsite_form', absint( $_POST['carno_template_onsite_form'] ?? 0 ) );
-    update_option( 'carno_karamp_product_id',    absint( $_POST['carno_karamp_product_id']    ?? 0 ) );
-    update_option( 'carno_template_karamp',      absint( $_POST['carno_template_karamp']      ?? 0 ) );
 
     // چک‌اوت
     update_option( 'carno_address_required_products', array_values( array_filter( array_map( 'absint', explode( ',', sanitize_text_field( $_POST['carno_address_required_products'] ?? '' ) ) ) ) ) );
@@ -131,10 +127,6 @@ function carno_render_settings_page() {
     $template_license         = get_option( 'carno_template_license',         37026 );
     $vip_product_id           = get_option( 'carno_vip_product_id',           41077 );
     $vip_variation_id         = get_option( 'carno_vip_variation_id',         41078 );
-    $onsite_product_ids       = get_option( 'carno_onsite_product_ids',       [ 13832, 14259 ] );
-    $template_onsite_form     = get_option( 'carno_template_onsite_form',     31944 );
-    $karamp_product_id        = get_option( 'carno_karamp_product_id',        39576 );
-    $template_karamp          = get_option( 'carno_template_karamp',          40177 );
     $address_required_prods   = get_option( 'carno_address_required_products', [ 13534 ] );
     $coupon_label             = get_option( 'carno_coupon_label',             'سود شما از این خرید' );
 
@@ -304,33 +296,6 @@ function carno_render_settings_page() {
                     </tr>
                 </table>
 
-                <hr>
-                <h3>فرم ثبت‌نام دوره حضوری</h3>
-                <p class="description">پس از خرید این محصولات (یا وارییشن با attribute «حضوری»)، فرم ثبت‌نام نمایش داده می‌شود.</p>
-                <table class="form-table">
-                    <tr>
-                        <th scope="row">شناسه محصولات (با کاما جدا کنید)</th>
-                        <td><input type="text" name="carno_onsite_product_ids" value="<?php echo esc_attr( implode( ', ', $onsite_product_ids ) ); ?>" class="regular-text" placeholder="مثال: 13832, 14259"></td>
-                    </tr>
-                    <tr>
-                        <th scope="row">شناسه تمپلیت فرم حضوری</th>
-                        <td><input type="number" name="carno_template_onsite_form" value="<?php echo esc_attr( $template_onsite_form ); ?>" class="small-text"></td>
-                    </tr>
-                </table>
-
-                <hr>
-                <h3>باکس پشتیبانی Karamp</h3>
-                <p class="description">پس از خرید محصول Karamp، این تمپلیت در صفحه تشکر نمایش داده می‌شود.</p>
-                <table class="form-table">
-                    <tr>
-                        <th scope="row">شناسه محصول Karamp</th>
-                        <td><input type="number" name="carno_karamp_product_id" value="<?php echo esc_attr( $karamp_product_id ); ?>" class="small-text"></td>
-                    </tr>
-                    <tr>
-                        <th scope="row">شناسه تمپلیت Karamp</th>
-                        <td><input type="number" name="carno_template_karamp" value="<?php echo esc_attr( $template_karamp ); ?>" class="small-text"></td>
-                    </tr>
-                </table>
             </div>
 
             <?php // ── TAB: چک‌اوت ── ?>
