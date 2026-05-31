@@ -108,18 +108,14 @@ function carno_billing_phone_in_billing_column_hpos( $column, $order ) {
 }
 
 function carno_customer_orders_url( $order, $hpos ) {
-    $user_id = $order->get_customer_id();
-    $base    = $hpos ? admin_url( 'admin.php?page=wc-orders' ) : admin_url( 'edit.php?post_type=shop_order' );
-    if ( $user_id ) {
-        return $base . '&_customer_user=' . $user_id;
-    }
-    return $base . '&s=' . rawurlencode( $order->get_billing_email() );
+    $base = $hpos ? admin_url( 'admin.php?page=wc-orders' ) : admin_url( 'edit.php?post_type=shop_order' );
+    return $base . '&s=' . rawurlencode( $order->get_billing_phone() );
 }
 
 function carno_render_billing_phone_row( $phone, $url ) {
     if ( ! $phone ) return;
     echo '<br><small style="color:#888; display:inline-flex; align-items:center; gap:5px;">';
     echo esc_html( $phone );
-    echo ' <a href="' . esc_url( $url ) . '" target="_blank" style="font-size:10px; background:#f0f0f1; border:1px solid #c3c4c7; padding:1px 6px; border-radius:3px; color:#50575e; text-decoration:none; white-space:nowrap;">همه سفارشات</a>';
+    echo ' <br><a href="' . esc_url( $url ) . '" target="_blank" style="font-size:10px; background:#f0f0f1; border:1px solid #c3c4c7; padding:1px 6px; border-radius:3px; color:#50575e; text-decoration:none; white-space:nowrap;">همه سفارشات</a>';
     echo '</small>';
 }
