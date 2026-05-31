@@ -3,22 +3,17 @@
 // یکپارچه‌سازی‌ها - Elementor، Gravity Forms، Rank Math، Voorodak
 // ============================================================================
 
-// نمایش تمپلیت Elementor بعد از خرید — یکپارچه برای صفحه تشکر و مشاهده سفارش
-// منطق: تمپلیت پیش‌فرض برای همه محصولات؛ جدول استثناها override می‌کند (0 = نمایش نده)
+// نمایش تمپلیت Elementor بعد از خرید (صفحه تشکر و مشاهده سفارش)
+// هر قانون: template_id + mode (blacklist|whitelist) + products[]
+//   blacklist: نمایش برای همه سفارش‌ها به جز آن‌هایی که حاوی محصولات لیست‌شده‌اند (خالی = همه)
+//   whitelist: نمایش فقط برای سفارش‌هایی که حداقل یک محصول لیست‌شده دارند
 add_action( 'woocommerce_order_details_before_order_table', 'carno_show_order_templates' );
 function carno_show_order_templates( $order ) {
     if ( ! $order ) return;
 
-    $default_tpl  = (int) get_option( 'carno_template_default_tpl', 37026 );
-    $exceptions   = (array) get_option( 'carno_template_licenses', [] );
-
-    $override_map = [];
-    foreach ( $exceptions as $rule ) {
-        $pid = (int) ( $rule['product_id'] ?? 0 );
-        if ( $pid > 0 ) {
-            $override_map[ $pid ] = (int) ( $rule['template_id'] ?? 0 );
-        }
-    }
+    $d     = carno_settings_defaults();
+    $rules = (array) get_option( 'carno_template_rules', $d['template_rules'] );
+    if ( empty( $rules ) ) return;
 
     $order_pids = [];
     foreach ( $order->get_items() as $item ) {
@@ -29,22 +24,26 @@ function carno_show_order_templates( $order ) {
     }
     $order_pids = array_unique( $order_pids );
 
-    $tpls = [];
-    if ( empty( $order_pids ) ) {
-        if ( $default_tpl ) $tpls[] = $default_tpl;
-    } else {
-        foreach ( $order_pids as $pid ) {
-            if ( array_key_exists( $pid, $override_map ) ) {
-                $tpl = $override_map[ $pid ];
-                if ( $tpl > 0 ) $tpls[] = $tpl;
-            } else {
-                if ( $default_tpl > 0 ) $tpls[] = $default_tpl;
-            }
-        }
-    }
+    $shown = [];
+    foreach ( $rules as $rule ) {
+        $tpl      = (int) ( $rule['template_id'] ?? 0 );
+        $mode     = $rule['mode'] ?? 'blacklist';
+        $products = array_map( 'intval', (array) ( $rule['products'] ?? [] ) );
 
-    foreach ( array_unique( $tpls ) as $tpl ) {
-        echo do_shortcode( '[elementor-template id="' . $tpl . '"]' );
+        if ( ! $tpl || in_array( $tpl, $shown ) ) continue;
+
+        $intersect = array_intersect( $order_pids, $products );
+
+        if ( $mode === 'blacklist' ) {
+            $show = empty( $products ) || empty( $intersect );
+        } else {
+            $show = ! empty( $intersect );
+        }
+
+        if ( $show ) {
+            echo do_shortcode( '[elementor-template id="' . $tpl . '"]' );
+            $shown[] = $tpl;
+        }
     }
 }
 

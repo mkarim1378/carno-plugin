@@ -33,6 +33,9 @@ function carno_settings_defaults() {
             ['products' => [16180, 13534], 'price' => 5000000],
         ],
         'qr_message' => 'تبریک! چون شما از همراهان کتاب آکادمی Carno هستید، «بیشترین تخفیف» ممکن به صورت خودکار برای شما اعمال شد. این فرصت فقط تا ۳۰ دقیقه دیگر معتبر است.',
+        'template_rules' => [
+            ['template_id' => 37026, 'mode' => 'blacklist', 'products' => []],
+        ],
     ];
 }
 
@@ -196,21 +199,19 @@ function carno_handle_save_settings() {
     update_option( 'carno_hide_price_hour', absint( $_POST['carno_hide_price_hour'] ?? 16 ) );
     update_option( 'carno_timer_css_class', sanitize_text_field( $_POST['carno_timer_css_class'] ?? 'daily-timer' ) );
 
-    // تمپلیت پیش‌فرض
-    update_option( 'carno_template_default_tpl', absint( $_POST['carno_template_default_tpl'] ?? 0 ) );
-
-    // استثناها per-product (template_id می‌تواند صفر باشد = نمایش نده)
-    $tpl_exceptions = [];
-    foreach ( (array) ( $_POST['tpl_pid'] ?? [] ) as $i => $pid ) {
-        $pid = absint( $pid );
-        if ( $pid > 0 ) {
-            $tpl_exceptions[] = [
-                'product_id'  => $pid,
-                'template_id' => absint( $_POST['tpl_id'][ $i ] ?? 0 ),
-            ];
+    // قوانین تمپلیت (بلک‌لیست / وایت‌لیست)
+    $tpl_rules = [];
+    foreach ( (array) ( $_POST['tpl_rule_tpl'] ?? [] ) as $i => $tpl ) {
+        $tpl  = absint( $tpl );
+        $mode = in_array( $_POST['tpl_rule_mode'][ $i ] ?? '', [ 'blacklist', 'whitelist' ] )
+            ? sanitize_key( $_POST['tpl_rule_mode'][ $i ] )
+            : 'blacklist';
+        $prods = array_values( array_filter( array_map( 'absint', (array) ( $_POST['tpl_rule_products'][ $i ] ?? [] ) ) ) );
+        if ( $tpl > 0 ) {
+            $tpl_rules[] = [ 'template_id' => $tpl, 'mode' => $mode, 'products' => $prods ];
         }
     }
-    update_option( 'carno_template_licenses', $tpl_exceptions );
+    update_option( 'carno_template_rules', $tpl_rules );
 
     // چک‌اوت
     $addr_ids = [];
@@ -242,8 +243,7 @@ function carno_render_settings_page() {
     $packages               = get_option( 'carno_packages',                  $d['packages'] );
     $hide_price_hour        = get_option( 'carno_hide_price_hour',           16 );
     $timer_css_class        = get_option( 'carno_timer_css_class',           'daily-timer' );
-    $default_tpl            = get_option( 'carno_template_default_tpl',      37026 );
-    $tpl_exceptions         = get_option( 'carno_template_licenses',          [] );
+    $tpl_rules              = get_option( 'carno_template_rules',             $d['template_rules'] );
     $address_required_prods = get_option( 'carno_address_required_products', [ 13534 ] );
     $coupon_label           = get_option( 'carno_coupon_label',              'سود شما از این خرید' );
 
@@ -419,46 +419,51 @@ function carno_render_settings_page() {
             <?php // ── TAB: محصولات و تمپلیت‌ها ── ?>
             <div class="carno-tab-panel<?php echo $active_tab === 'products' ? ' is-active' : ''; ?>" data-panel="products">
                 <h2>تمپلیت‌های نمایش پس از خرید</h2>
-                <p class="description">این تمپلیت‌ها در صفحه تشکر و صفحه مشاهده سفارش (قبل از جدول آیتم‌ها) نمایش داده می‌شوند.</p>
+                <p class="description">
+                    هر قانون یک تمپلیت Elementor را برای گروهی از سفارش‌ها نمایش می‌دهد.<br>
+                    <strong>بلک‌لیست:</strong> تمپلیت برای همه سفارش‌ها نمایش داده می‌شود به جز سفارش‌هایی که حاوی محصولات لیست‌شده هستند.<br>
+                    <strong>وایت‌لیست:</strong> تمپلیت فقط برای سفارش‌هایی نمایش داده می‌شود که حداقل یکی از محصولات لیست‌شده را دارند.
+                </p>
 
-                <h3>تمپلیت پیش‌فرض</h3>
-                <p class="description">برای تمام سفارش‌ها نمایش داده می‌شود، مگر محصولاتی که در جدول استثناها تعریف شده‌اند.</p>
-                <table class="form-table">
-                    <tr>
-                        <th scope="row">شناسه تمپلیت Elementor</th>
-                        <td>
-                            <input type="number" name="carno_template_default_tpl" value="<?php echo esc_attr( $default_tpl ); ?>" class="small-text" min="0">
-                            <p class="description">صفر = هیچ تمپلیتی به صورت پیش‌فرض نمایش داده نمی‌شود.</p>
-                        </td>
-                    </tr>
-                </table>
-
-                <hr>
-                <h3>استثناها (per-product override)</h3>
-                <p class="description">برای محصولات لیست‌شده، به جای تمپلیت پیش‌فرض، تمپلیت مشخص‌شده نمایش داده می‌شود. شناسه صفر = هیچ تمپلیتی نمایش نده.</p>
-                <table class="wp-list-table widefat fixed striped carno-repeater-table" id="tpl-table">
-                    <thead>
-                        <tr>
-                            <th>محصول</th>
-                            <th style="width:220px">شناسه تمپلیت (۰ = نمایش ندهد)</th>
-                            <th style="width:60px"></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ( $tpl_exceptions as $row ) : ?>
-                        <tr>
-                            <td><?php carno_product_select( 'tpl_pid[]', $row['product_id'], $products, 'products', 'width:100%' ); ?></td>
-                            <td><input type="number" name="tpl_id[]" value="<?php echo esc_attr( $row['template_id'] ); ?>" style="width:100%;box-sizing:border-box" min="0"></td>
-                            <td><button type="button" class="button carno-remove-row">حذف</button></td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-                <button type="button" class="button carno-add-row"
-                    data-table="tpl-table" data-row-type="template"
-                    data-pid-name="tpl_pid[]" data-tpl-name="tpl_id[]" data-mode="products">
-                    + افزودن استثنا
-                </button>
+                <div id="carno-tpl-rules">
+                    <?php foreach ( $tpl_rules as $i => $rule ) : ?>
+                    <div class="carno-package-card" data-rule-index="<?php echo $i; ?>">
+                        <div class="carno-pkg-header">
+                            <strong class="carno-tpl-rule-label">قانون <?php echo $i + 1; ?></strong>
+                            <button type="button" class="button carno-remove-tpl-rule">حذف قانون</button>
+                        </div>
+                        <table class="form-table" style="margin-bottom:8px">
+                            <tr>
+                                <th scope="row" style="width:180px">شناسه تمپلیت Elementor</th>
+                                <td><input type="number" name="tpl_rule_tpl[<?php echo $i; ?>]" value="<?php echo esc_attr( $rule['template_id'] ); ?>" class="small-text" min="1"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row">حالت</th>
+                                <td>
+                                    <select name="tpl_rule_mode[<?php echo $i; ?>]">
+                                        <option value="blacklist"<?php selected( $rule['mode'] ?? 'blacklist', 'blacklist' ); ?>>بلک‌لیست — برای همه به جز این محصولات</option>
+                                        <option value="whitelist"<?php selected( $rule['mode'] ?? 'blacklist', 'whitelist' ); ?>>وایت‌لیست — فقط برای این محصولات</option>
+                                    </select>
+                                </td>
+                            </tr>
+                        </table>
+                        <p class="description" style="margin-bottom:6px">لیست محصولات (برای بلک‌لیست خالی = همه، برای وایت‌لیست خالی = هیچ‌کس)</p>
+                        <table class="wp-list-table widefat fixed striped carno-repeater-table" id="tpl-prod-table-<?php echo $i; ?>">
+                            <thead><tr><th>محصول</th><th style="width:60px"></th></tr></thead>
+                            <tbody>
+                                <?php foreach ( (array) ( $rule['products'] ?? [] ) as $pid ) : ?>
+                                <tr>
+                                    <td><?php carno_product_select( "tpl_rule_products[{$i}][]", $pid, $products, 'products', 'width:100%' ); ?></td>
+                                    <td><button type="button" class="button carno-remove-row">حذف</button></td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                        <button type="button" class="button carno-add-tpl-product" data-rule-index="<?php echo $i; ?>">+ افزودن محصول</button>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <button type="button" class="button button-secondary" id="carno-add-tpl-rule" style="margin-top:12px">+ افزودن قانون جدید</button>
             </div>
 
             <?php // ── TAB: چک‌اوت ── ?>
@@ -517,6 +522,7 @@ function carno_render_settings_page() {
     <script>
     window.carnoProductsData = <?php echo wp_json_encode( $products ); ?>;
     var carnoPackageCounter  = <?php echo count( $packages ); ?>;
+    var carnoTplRuleCounter  = <?php echo count( $tpl_rules ); ?>;
 
     (function () {
         // ── تب‌ها ──
@@ -720,6 +726,79 @@ function carno_render_settings_page() {
 
             document.getElementById('carno-packages').appendChild(card);
             renumberPackages();
+        });
+
+        // ── قوانین تمپلیت ──
+        function renumberTplRules() {
+            document.querySelectorAll('#carno-tpl-rules .carno-tpl-rule-label').forEach(function (el, i) {
+                el.textContent = 'قانون ' + (i + 1);
+            });
+        }
+
+        // افزودن محصول به قانون
+        document.addEventListener('click', function (e) {
+            if (!e.target.classList.contains('carno-add-tpl-product')) return;
+            var ruleIdx = e.target.dataset.ruleIndex;
+            var tblId   = 'tpl-prod-table-' + ruleIdx;
+            var selName = 'tpl_rule_products[' + ruleIdx + '][]';
+            var excluded = getSelectedIds(tblId, selName);
+
+            var tbody = document.querySelector('#' + tblId + ' tbody');
+            var tr    = document.createElement('tr');
+            var tdPid = document.createElement('td');
+            tdPid.appendChild(buildProductSelect(selName, 'products', excluded));
+            tr.appendChild(tdPid);
+            var tdDel = document.createElement('td');
+            var btnDel = document.createElement('button');
+            btnDel.type = 'button'; btnDel.className = 'button carno-remove-row'; btnDel.textContent = 'حذف';
+            tdDel.appendChild(btnDel);
+            tr.appendChild(tdDel);
+            tbody.appendChild(tr);
+        });
+
+        // حذف قانون
+        document.addEventListener('click', function (e) {
+            if (!e.target.classList.contains('carno-remove-tpl-rule')) return;
+            e.target.closest('.carno-package-card').remove();
+            renumberTplRules();
+        });
+
+        // افزودن قانون جدید
+        document.getElementById('carno-add-tpl-rule').addEventListener('click', function () {
+            var idx     = carnoTplRuleCounter++;
+            var tblId   = 'tpl-prod-table-' + idx;
+            var selName = 'tpl_rule_products[' + idx + '][]';
+            var card    = document.createElement('div');
+            card.className         = 'carno-package-card';
+            card.dataset.ruleIndex = idx;
+
+            card.innerHTML =
+                '<div class="carno-pkg-header">' +
+                    '<strong class="carno-tpl-rule-label">قانون جدید</strong>' +
+                    '<button type="button" class="button carno-remove-tpl-rule">حذف قانون</button>' +
+                '</div>' +
+                '<table class="form-table" style="margin-bottom:8px">' +
+                    '<tr>' +
+                        '<th scope="row" style="width:180px">شناسه تمپلیت Elementor</th>' +
+                        '<td><input type="number" name="tpl_rule_tpl[' + idx + ']" class="small-text" min="1"></td>' +
+                    '</tr>' +
+                    '<tr>' +
+                        '<th scope="row">حالت</th>' +
+                        '<td><select name="tpl_rule_mode[' + idx + ']">' +
+                            '<option value="blacklist">بلک‌لیست — برای همه به جز این محصولات</option>' +
+                            '<option value="whitelist">وایت‌لیست — فقط برای این محصولات</option>' +
+                        '</select></td>' +
+                    '</tr>' +
+                '</table>' +
+                '<p class="description" style="margin-bottom:6px">لیست محصولات (برای بلک‌لیست خالی = همه، برای وایت‌لیست خالی = هیچ‌کس)</p>' +
+                '<table class="wp-list-table widefat fixed striped carno-repeater-table" id="' + tblId + '">' +
+                    '<thead><tr><th>محصول</th><th style="width:60px"></th></tr></thead>' +
+                    '<tbody></tbody>' +
+                '</table>' +
+                '<button type="button" class="button carno-add-tpl-product" data-rule-index="' + idx + '">+ افزودن محصول</button>';
+
+            document.getElementById('carno-tpl-rules').appendChild(card);
+            renumberTplRules();
         });
 
     })();
