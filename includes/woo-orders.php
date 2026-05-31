@@ -90,23 +90,36 @@ function show_order_products_column_content_woo( $column, $order_id ) {
 }
 
 // ============================================================================
-// نمایش شماره موبایل در ستون صورتحساب لیست سفارشات ادمین (سازگار با HPOS و قدیمی)
+// نمایش شماره موبایل + دکمه فیلتر سفارشات در ستون صورتحساب (سازگار با HPOS و قدیمی)
 add_action( 'manage_shop_order_posts_custom_column', 'carno_billing_phone_in_billing_column_legacy', 20, 2 );
 function carno_billing_phone_in_billing_column_legacy( $column, $post_id ) {
     if ( 'billing_address' !== $column ) return;
     $order = wc_get_order( $post_id );
     if ( ! $order ) return;
-    $phone = $order->get_billing_phone();
-    if ( $phone ) {
-        echo '<br><small style="color:#888;">' . esc_html( $phone ) . '</small>';
-    }
+    $url = carno_customer_orders_url( $order, false );
+    carno_render_billing_phone_row( $order->get_billing_phone(), $url );
 }
 
 add_action( 'manage_woocommerce_page_wc-orders_custom_column', 'carno_billing_phone_in_billing_column_hpos', 20, 2 );
 function carno_billing_phone_in_billing_column_hpos( $column, $order ) {
     if ( 'billing_address' !== $column ) return;
-    $phone = $order->get_billing_phone();
-    if ( $phone ) {
-        echo '<br><small style="color:#888;">' . esc_html( $phone ) . '</small>';
+    $url = carno_customer_orders_url( $order, true );
+    carno_render_billing_phone_row( $order->get_billing_phone(), $url );
+}
+
+function carno_customer_orders_url( $order, $hpos ) {
+    $user_id = $order->get_customer_id();
+    $base    = $hpos ? admin_url( 'admin.php?page=wc-orders' ) : admin_url( 'edit.php?post_type=shop_order' );
+    if ( $user_id ) {
+        return $base . '&_customer_user=' . $user_id;
     }
+    return $base . '&s=' . rawurlencode( $order->get_billing_email() );
+}
+
+function carno_render_billing_phone_row( $phone, $url ) {
+    if ( ! $phone ) return;
+    echo '<br><small style="color:#888; display:inline-flex; align-items:center; gap:5px;">';
+    echo esc_html( $phone );
+    echo ' <a href="' . esc_url( $url ) . '" target="_blank" style="font-size:10px; background:#f0f0f1; border:1px solid #c3c4c7; padding:1px 6px; border-radius:3px; color:#50575e; text-decoration:none; white-space:nowrap;">همه سفارشات</a>';
+    echo '</small>';
 }
