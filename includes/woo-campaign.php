@@ -5,26 +5,17 @@
 
 // لیست قیمت‌های نهایی محصولات برای کمپین
 function get_sepehr_final_prices() {
-    return array(
-        // آنلاین کره ای
-        41078 => 16000000,
-        // آنلاین چینی
-        38427 => 15000000,
-        // داخلی
-        18535 => 7500000,
-        // زبان فنی
-        16180 => 3800000,
-        // GDS
-        13928 => 3800000,
-        // کتاب
-        13534 => 1980000,
-        // فرمان برقی
-        41462 => 12000000,
-    );
+    $d    = carno_settings_defaults();
+    $rows = get_option( 'carno_campaign_prices', $d['campaign_prices'] );
+    $out  = [];
+    foreach ( $rows as $row ) {
+        $out[ (int) $row['pid'] ] = (int) $row['price'];
+    }
+    return $out;
 }
 
 function get_sepehr_redirect_only_ids() {
-    return array(); // محصولاتی که باید صفحه محصولشان باز شود
+    return (array) get_option( 'carno_campaign_redirect_ids', [] );
 }
 
 // هندل کردن لینک مستقیم خرید (?special_buy=1&pid=X&vid=Y)

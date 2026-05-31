@@ -5,10 +5,11 @@
 
 // فیلدهای صورتحساب: فقط نام و موبایل (+ آدرس برای محصول 13534)
 function customize_checkout_fields($fields) {
+    $addr_products    = (array) get_option( 'carno_address_required_products', [ 13534 ] );
     $has_product_13534 = false;
-    if (WC()->cart && !WC()->cart->is_empty()) {
-        foreach (WC()->cart->get_cart() as $cart_item) {
-            if (isset($cart_item['product_id']) && $cart_item['product_id'] == 13534) {
+    if ( WC()->cart && ! WC()->cart->is_empty() ) {
+        foreach ( WC()->cart->get_cart() as $cart_item ) {
+            if ( isset( $cart_item['product_id'] ) && in_array( (int) $cart_item['product_id'], array_map( 'intval', $addr_products ) ) ) {
                 $has_product_13534 = true;
                 break;
             }
@@ -92,7 +93,7 @@ add_filter( 'woocommerce_cart_totals_coupon_label', 'change_coupon_label_text', 
 
 function change_coupon_label_text( $label, $coupon ) {
     if ( $coupon->get_code() ) {
-        $label = 'سود شما از این خرید';
+        $label = get_option( 'carno_coupon_label', 'سود شما از این خرید' );
     }
     return $label;
 }

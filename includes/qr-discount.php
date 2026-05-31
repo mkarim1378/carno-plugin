@@ -5,29 +5,19 @@
 
 // آرایه قیمت‌های ویژه برای خریداران از طریق QR کد
 function carno_get_special_prices() {
-    return array(
-        // آنلاین کره ای
-        41078 => 9800000,
-        // آنلاین چینی
-        38427 => 9800000,
-        // داخلی
-        18535 => 7500000,
-        // زبان فنی
-        16180 => 3800000,
-        // GDS
-        13928 => 3800000,
-        // کتاب
-        13534 => 1900000,
-        // فرمان برقی
-        41462 => 9800000,
-        // همایش زنجان
-        42096 => 1900000,
-    );
+    $d    = carno_settings_defaults();
+    $rows = get_option( 'carno_qr_prices', $d['qr_prices'] );
+    $out  = [];
+    foreach ( $rows as $row ) {
+        $out[ (int) $row['pid'] ] = (int) $row['price'];
+    }
+    return $out;
 }
 
 // بررسی فعال بودن تخفیف (کوکی یا پارامتر URL)
 function carno_is_discount_active() {
-    if (isset($_COOKIE['carno_book_ids']) || (isset($_GET['utm_source']) && $_GET['utm_source'] === 'book_qr')) {
+    $utm = get_option( 'carno_qr_utm_source', 'book_qr' );
+    if ( isset( $_COOKIE['carno_book_ids'] ) || ( isset( $_GET['utm_source'] ) && $_GET['utm_source'] === $utm ) ) {
         return true;
     }
     return false;
@@ -36,19 +26,21 @@ function carno_is_discount_active() {
 // ست کردن کوکی هنگام ورود با UTM (بدون ریدایرکت)
 add_action('init', 'carno_set_discount_cookie_logic');
 function carno_set_discount_cookie_logic() {
-    if (isset($_GET['utm_source']) && $_GET['utm_source'] === 'book_qr') {
-        $product_id = url_to_postid(home_url($_SERVER['REQUEST_URI']));
+    $utm = get_option( 'carno_qr_utm_source', 'book_qr' );
+    if ( isset( $_GET['utm_source'] ) && $_GET['utm_source'] === $utm ) {
+        $product_id = url_to_postid( home_url( $_SERVER['REQUEST_URI'] ) );
 
-        if ($product_id) {
-            $saved_ids = isset($_COOKIE['carno_book_ids']) ? explode(',', $_COOKIE['carno_book_ids']) : array();
+        if ( $product_id ) {
+            $saved_ids = isset( $_COOKIE['carno_book_ids'] ) ? explode( ',', $_COOKIE['carno_book_ids'] ) : [];
 
-            if (!in_array($product_id, $saved_ids)) {
+            if ( ! in_array( $product_id, $saved_ids ) ) {
                 $saved_ids[] = $product_id;
             }
 
-            $updated_ids = implode(',', $saved_ids);
+            $updated_ids    = implode( ',', $saved_ids );
+            $cookie_seconds = (int) get_option( 'carno_qr_cookie_minutes', 30 ) * 60;
 
-            setcookie('carno_book_ids', $updated_ids, time() + 1800, COOKIEPATH, COOKIE_DOMAIN);
+            setcookie( 'carno_book_ids', $updated_ids, time() + $cookie_seconds, COOKIEPATH, COOKIE_DOMAIN );
             $_COOKIE['carno_book_ids'] = $updated_ids;
         }
     }
@@ -56,7 +48,8 @@ function carno_set_discount_cookie_logic() {
 
 // بررسی اینکه آیا محصول خاصی مشمول تخفیف QR است
 function carno_is_item_discounted($product_id) {
-    if (isset($_GET['utm_source']) && $_GET['utm_source'] === 'book_qr') {
+    $utm = get_option( 'carno_qr_utm_source', 'book_qr' );
+    if ( isset( $_GET['utm_source'] ) && $_GET['utm_source'] === $utm ) {
         $current_url_id = url_to_postid(home_url($_SERVER['REQUEST_URI']));
         if ((int)$current_url_id === (int)$product_id) return true;
     }
@@ -96,7 +89,7 @@ function carno_show_discount_alert() {
         <script>
             (function() {
                 if (!sessionStorage.getItem('carno_alert_shown')) {
-                    alert("تبریک! چون شما از همراهان کتاب آکادمی Carno هستید، «بیشترین تخفیف» ممکن به صورت خودکار برای شما اعمال شد. این فرصت فقط تا ۳۰ دقیقه دیگر معتبر است.");
+                    alert(<?php echo wp_json_encode( get_option( 'carno_qr_discount_message', carno_settings_defaults()['qr_message'] ) ); ?>);
                     sessionStorage.setItem('carno_alert_shown', 'true');
                 }
             })();

@@ -76,20 +76,12 @@ function carno_apply_fixed_discount_for_specific_product( $cart ) {
         return;
     }
 
-    $discounts = [
-        13928 => [
-            'amount' => 2020000,
-            'label'  => 'تخفیف ویژه خریداران GDS'
-        ],
-        13534 => [
-            'amount' => 1020000,
-            'label'  => 'تخفیف ویژه دریافت کنندگان چک لیست پذیرش'
-        ],
-        38427 => [
-            'amount' => 6600000,
-            'label'  => 'تخفیف ویژه دریافت کنندگان چک لیست پذیرش'
-        ],
-    ];
+    $d    = carno_settings_defaults();
+    $rows = get_option( 'carno_session_discounts', $d['session_discounts'] );
+    $discounts = [];
+    foreach ( $rows as $row ) {
+        $discounts[ (int) $row['pid'] ] = [ 'amount' => (int) $row['amount'], 'label' => $row['label'] ];
+    }
 
     $cart_items = $cart->get_cart();
     $existing_fees = $cart->get_fees();
@@ -146,10 +138,10 @@ add_action( 'woocommerce_cart_calculate_fees', 'custom_package_fixed_price', 20,
 function custom_package_fixed_price( $cart ) {
     if ( is_admin() && ! defined( 'DOING_AJAX' ) ) return;
 
-    $required_products = array( 16180, 13534 );
+    $required_products = (array) get_option( 'carno_package_product_ids', [ 16180, 13534 ] );
     $found_products = array();
     $package_total = 0;
-    $final_price = 5000000;
+    $final_price = (int) get_option( 'carno_package_final_price', 5000000 );
 
     foreach ( $cart->get_cart() as $cart_item ) {
         if ( in_array( $cart_item['product_id'], $required_products ) ) {
@@ -173,31 +165,35 @@ add_filter('woocommerce_product_variation_get_price', 'carno_dynamic_fixed_price
 function carno_dynamic_fixed_price($price, $product) {
     if (is_admin()) return $price;
     date_default_timezone_set('Asia/Tehran');
-    $current_hour = (int)date('G');
-    if ($current_hour == 16) {
+    $hide_hour    = (int) get_option( 'carno_hide_price_hour', 16 );
+    $current_hour = (int) date( 'G' );
+    if ( $hide_hour >= 0 && $current_hour === $hide_hour ) {
         return $product->get_regular_price();
     }
     return $price;
 }
 
-// پنهان کردن لیبل "حراج" در ساعت ۱۶ الی ۱۷
+// پنهان کردن لیبل "حراج" در ساعت تعیین‌شده
 add_filter('woocommerce_product_is_on_sale', 'carno_hide_sale_flash', 99, 2);
 function carno_hide_sale_flash($is_on_sale, $product) {
     date_default_timezone_set('Asia/Tehran');
-    $current_hour = (int)date('G');
-    if ($current_hour == 16) {
+    $hide_hour    = (int) get_option( 'carno_hide_price_hour', 16 );
+    $current_hour = (int) date( 'G' );
+    if ( $hide_hour >= 0 && $current_hour === $hide_hour ) {
         return false;
     }
     return $is_on_sale;
 }
 
-// مخفی کردن ویجت تایمر در ساعت ۱۶ الی ۱۷
+// مخفی کردن ویجت تایمر در ساعت تعیین‌شده
 add_action('wp_head', 'carno_hide_timer_css');
 function carno_hide_timer_css() {
     date_default_timezone_set('Asia/Tehran');
-    $current_hour = (int)date('G');
-    if ($current_hour == 16) {
-        echo '<style>.daily-timer { display: none !important; }</style>';
+    $hide_hour    = (int) get_option( 'carno_hide_price_hour', 16 );
+    $timer_class  = get_option( 'carno_timer_css_class', 'daily-timer' );
+    $current_hour = (int) date( 'G' );
+    if ( $hide_hour >= 0 && $current_hour === $hide_hour && $timer_class ) {
+        echo '<style>.' . esc_html( $timer_class ) . ' { display: none !important; }</style>';
     }
 }
 

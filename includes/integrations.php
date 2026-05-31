@@ -6,7 +6,8 @@
 // نمایش تمپلیت درخواست لایسنس در صفحه مشاهده سفارش
 add_action( 'woocommerce_order_details_before_order_table', 'display_elementor_template_before_order_details_table' );
 function display_elementor_template_before_order_details_table( $order ) {
-    echo do_shortcode( '[elementor-template id="37026"]' );
+    $tpl = (int) get_option( 'carno_template_license', 37026 );
+    if ( $tpl ) echo do_shortcode( '[elementor-template id="' . $tpl . '"]' );
 }
 
 // ============================================================================
@@ -34,17 +35,18 @@ function display_custom_order_content($order) {
             }
         }
 
-        $variation_id = $item->get_variation_id();
-        if ($variation_id == 41078) {
+        $variation_id     = $item->get_variation_id();
+        $vip_variation_id = (int) get_option( 'carno_vip_variation_id', 41078 );
+        if ( $variation_id && $variation_id === $vip_variation_id ) {
             $show_vip_box = true;
         }
 
-        $product_id = $product->get_id();
-        $vip_product_id = 41077;
-        $form_product_ids = [13832, 14259];
+        $product_id       = $product->get_id();
+        $vip_product_id   = (int) get_option( 'carno_vip_product_id', 41077 );
+        $form_product_ids = array_map( 'intval', (array) get_option( 'carno_onsite_product_ids', [ 13832, 14259 ] ) );
 
-        if ($product_id == $vip_product_id) $show_vip_box = true;
-        if (in_array($product_id, $form_product_ids)) $show_form = true;
+        if ( $product_id === $vip_product_id ) $show_vip_box = true;
+        if ( in_array( $product_id, $form_product_ids ) ) $show_form = true;
     }
 
     if ($show_vip_box) : ?>
@@ -70,7 +72,8 @@ function display_custom_order_content($order) {
 
     if ($show_form) {
         echo '<div class="custom-form" style="margin-top:30px;">';
-        echo do_shortcode('[elementor-template id="31944"]');
+        $tpl_onsite = (int) get_option( 'carno_template_onsite_form', 31944 );
+        if ( $tpl_onsite ) echo do_shortcode( '[elementor-template id="' . $tpl_onsite . '"]' );
         echo '</div>';
     }
 }
@@ -90,13 +93,14 @@ add_action('woocommerce_view_order', function($order_id) {
 add_action( 'woocommerce_thankyou', 'show_elementor_template_after_specific_product_purchase', 10, 1 );
 function show_elementor_template_after_specific_product_purchase( $order_id ) {
     if ( ! $order_id ) return;
-    $target_product_id = 39576;
+    $target_product_id = (int) get_option( 'carno_karamp_product_id', 39576 );
+    $tpl_karamp        = (int) get_option( 'carno_template_karamp',   40177 );
     $order = wc_get_order( $order_id );
     if ( ! $order ) return;
 
     foreach ( $order->get_items() as $item ) {
-        if ( $item->get_product_id() == $target_product_id ) {
-            echo do_shortcode( '[elementor-template id="40177"]' );
+        if ( $tpl_karamp && $item->get_product_id() === $target_product_id ) {
+            echo do_shortcode( '[elementor-template id="' . $tpl_karamp . '"]' );
             break;
         }
     }

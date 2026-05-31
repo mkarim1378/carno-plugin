@@ -11,6 +11,7 @@ Author URI:   https://sepehralimohammadi.com/
 
 $carno_includes = plugin_dir_path( __FILE__ ) . 'includes/';
 
+require_once $carno_includes . 'admin-settings.php'; // صفحه تنظیمات ادمین + توابع defaults
 require_once $carno_includes . 'performance.php';    // بهینه‌سازی وردپرس و حذف bloat
 require_once $carno_includes . 'security.php';       // امنیت، ریدایرکت‌ها، تشخیص VPN
 require_once $carno_includes . 'users.php';          // مدیریت کاربران، ساخت حساب، کش
