@@ -90,12 +90,23 @@ function show_order_products_column_content_woo( $column, $order_id ) {
 }
 
 // ============================================================================
-// نمایش شماره موبایل مشتری در کنار نام، در ستون صورتحساب لیست سفارشات ادمین
-add_filter( 'woocommerce_admin_order_buyer_name', 'carno_append_billing_phone_to_buyer_name', 10, 2 );
-function carno_append_billing_phone_to_buyer_name( $buyer_name, $order ) {
+// نمایش شماره موبایل در ستون صورتحساب لیست سفارشات ادمین (سازگار با HPOS و قدیمی)
+add_action( 'manage_shop_order_posts_custom_column', 'carno_billing_phone_in_billing_column_legacy', 20, 2 );
+function carno_billing_phone_in_billing_column_legacy( $column, $post_id ) {
+    if ( 'billing_address' !== $column ) return;
+    $order = wc_get_order( $post_id );
+    if ( ! $order ) return;
     $phone = $order->get_billing_phone();
     if ( $phone ) {
-        $buyer_name .= '<br><small style="color:#888; font-weight:normal;">' . esc_html( $phone ) . '</small>';
+        echo '<br><small style="color:#888;">' . esc_html( $phone ) . '</small>';
     }
-    return $buyer_name;
+}
+
+add_action( 'manage_woocommerce_page_wc-orders_custom_column', 'carno_billing_phone_in_billing_column_hpos', 20, 2 );
+function carno_billing_phone_in_billing_column_hpos( $column, $order ) {
+    if ( 'billing_address' !== $column ) return;
+    $phone = $order->get_billing_phone();
+    if ( $phone ) {
+        echo '<br><small style="color:#888;">' . esc_html( $phone ) . '</small>';
+    }
 }
