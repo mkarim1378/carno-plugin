@@ -88,3 +88,14 @@ function show_order_products_column_content_woo( $column, $order_id ) {
         echo implode( '<br>', $product_list );
     }
 }
+
+// ============================================================================
+// نمایش شماره موبایل مشتری در کنار نام، در ستون صورتحساب لیست سفارشات ادمین
+add_filter( 'woocommerce_admin_order_buyer_name', 'carno_append_billing_phone_to_buyer_name', 10, 2 );
+function carno_append_billing_phone_to_buyer_name( $buyer_name, $order ) {
+    $phone = $order->get_billing_phone();
+    if ( $phone ) {
+        $buyer_name .= '<br><small style="color:#888; font-weight:normal;">' . esc_html( $phone ) . '</small>';
+    }
+    return $buyer_name;
+}
