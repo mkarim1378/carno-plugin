@@ -120,6 +120,18 @@ function carno_product_select( $name, $selected, $products, $mode = 'with_vars',
 }
 
 // ============================================================================
+// AJAX: خواندن اسم تمپلیت المنتور بر اساس ID
+add_action( 'wp_ajax_carno_get_template_title', function() {
+    check_ajax_referer( 'carno_tpl_title', 'nonce' );
+    if ( ! current_user_can( 'manage_options' ) ) wp_send_json_error();
+    $id   = absint( $_POST['id'] ?? 0 );
+    $post = $id ? get_post( $id ) : null;
+    $title = ( $post && $post->post_type === 'elementor_library' && $post->post_status === 'publish' )
+        ? $post->post_title : '';
+    wp_send_json_success( [ 'title' => $title ] );
+} );
+
+// ============================================================================
 add_action( 'admin_menu', 'carno_register_settings_menu' );
 function carno_register_settings_menu() {
     add_menu_page(
@@ -517,12 +529,16 @@ function carno_render_settings_page() {
     .carno-pkg-price { margin-top: 12px; display: flex; align-items: center; gap: 12px; }
     .carno-pkg-price label { font-weight: 600; white-space: nowrap; }
     .carno-add-pkg-product { margin-top: 8px !important; }
+    .carno-tpl-name { color: #2271b1; font-style: italic; margin-right: 10px; font-size: 13px; vertical-align: middle; }
+    .carno-tpl-name.is-loading { color: #aaa; }
+    .carno-tpl-name.is-missing { color: #c00; }
     </style>
 
     <script>
-    window.carnoProductsData = <?php echo wp_json_encode( $products ); ?>;
-    var carnoPackageCounter  = <?php echo count( $packages ); ?>;
-    var carnoTplRuleCounter  = <?php echo count( $tpl_rules ); ?>;
+    window.carnoProductsData  = <?php echo wp_json_encode( $products ); ?>;
+    var carnoPackageCounter   = <?php echo count( $packages ); ?>;
+    var carnoTplRuleCounter   = <?php echo count( $tpl_rules ); ?>;
+    var carnoTplTitleNonce    = <?php echo wp_json_encode( wp_create_nonce( 'carno_tpl_title' ) ); ?>;
 
     (function () {
         // ── تب‌ها ──
@@ -800,6 +816,63 @@ function carno_render_settings_page() {
             document.getElementById('carno-tpl-rules').appendChild(card);
             renumberTplRules();
         });
+
+        // ── پیش‌نمایش اسم تمپلیت المنتور ──
+        var tplTitleCache = {};
+        var tplTitleTimer = null;
+
+        function fetchTplTitle(input) {
+            var id   = parseInt(input.value, 10);
+            var span = input.parentNode.querySelector('.carno-tpl-name');
+            if (!span) {
+                span = document.createElement('span');
+                span.className = 'carno-tpl-name';
+                input.parentNode.appendChild(span);
+            }
+            if (!id) { span.textContent = ''; span.className = 'carno-tpl-name'; return; }
+            if (tplTitleCache[id] !== undefined) {
+                span.className   = 'carno-tpl-name' + (tplTitleCache[id] ? '' : ' is-missing');
+                span.textContent = tplTitleCache[id] ? '— ' + tplTitleCache[id] : '— (یافت نشد)';
+                return;
+            }
+            span.className   = 'carno-tpl-name is-loading';
+            span.textContent = '...';
+            var fd = new FormData();
+            fd.append('action', 'carno_get_template_title');
+            fd.append('nonce',  carnoTplTitleNonce);
+            fd.append('id',     id);
+            fetch(ajaxurl, { method: 'POST', body: fd })
+                .then(function(r)   { return r.json(); })
+                .then(function(res) {
+                    var title = res.success ? res.data.title : '';
+                    tplTitleCache[id] = title;
+                    span.className   = 'carno-tpl-name' + (title ? '' : ' is-missing');
+                    span.textContent = title ? '— ' + title : '— (یافت نشد)';
+                })
+                .catch(function() { span.className = 'carno-tpl-name is-missing'; span.textContent = '— (خطا)'; });
+        }
+
+        function attachTplTitleListeners(root) {
+            (root || document).querySelectorAll('[name^="tpl_rule_tpl"]').forEach(function(inp) {
+                if (inp.dataset.tplTitleBound) return;
+                inp.dataset.tplTitleBound = '1';
+                if (inp.value) fetchTplTitle(inp);
+                inp.addEventListener('input', function() {
+                    clearTimeout(tplTitleTimer);
+                    var self = this;
+                    tplTitleTimer = setTimeout(function() { fetchTplTitle(self); }, 600);
+                });
+            });
+        }
+        attachTplTitleListeners();
+
+        new MutationObserver(function(mutations) {
+            mutations.forEach(function(m) {
+                m.addedNodes.forEach(function(node) {
+                    if (node.nodeType === 1) attachTplTitleListeners(node);
+                });
+            });
+        }).observe(document.getElementById('carno-tpl-rules'), { childList: true, subtree: true });
 
     })();
     </script>
