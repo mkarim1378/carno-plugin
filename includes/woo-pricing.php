@@ -133,27 +133,34 @@ function save_discount_percentage_meta( $post_id ) {
 }
 
 // ============================================================================
-// تخفیف پکیج زبان فنی (محصولات 16180 + 13534)
+// تخفیف پکیج (چند پکیج مستقل)
 add_action( 'woocommerce_cart_calculate_fees', 'custom_package_fixed_price', 20, 1 );
 function custom_package_fixed_price( $cart ) {
     if ( is_admin() && ! defined( 'DOING_AJAX' ) ) return;
 
-    $required_products = (array) get_option( 'carno_package_product_ids', [ 16180, 13534 ] );
-    $found_products = array();
-    $package_total = 0;
-    $final_price = (int) get_option( 'carno_package_final_price', 5000000 );
+    $d    = carno_settings_defaults();
+    $pkgs = get_option( 'carno_packages', $d['packages'] );
 
-    foreach ( $cart->get_cart() as $cart_item ) {
-        if ( in_array( $cart_item['product_id'], $required_products ) ) {
-            $found_products[] = $cart_item['product_id'];
-            $package_total += $cart_item['line_total'];
+    foreach ( $pkgs as $pkg ) {
+        $required = array_map( 'intval', (array) ( $pkg['products'] ?? [] ) );
+        if ( empty( $required ) ) continue;
+
+        $found = [];
+        $total = 0.0;
+        foreach ( $cart->get_cart() as $cart_item ) {
+            $pid = (int) $cart_item['product_id'];
+            if ( in_array( $pid, $required ) ) {
+                $found[] = $pid;
+                $total  += (float) $cart_item['line_total'];
+            }
         }
-    }
 
-    if ( count( array_unique( $found_products ) ) === count( $required_products ) ) {
-        $discount = $package_total - $final_price;
-        if ( $discount > 0 ) {
-            $cart->add_fee( 'تخفیف پکیج زبان فنی', -$discount );
+        if ( count( array_unique( $found ) ) === count( $required ) ) {
+            $final    = (int) ( $pkg['price'] ?? 0 );
+            $discount = $total - $final;
+            if ( $discount > 0 ) {
+                $cart->add_fee( 'تخفیف پکیج', -$discount );
+            }
         }
     }
 }

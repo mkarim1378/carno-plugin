@@ -3,11 +3,41 @@
 // یکپارچه‌سازی‌ها - Elementor، Gravity Forms، Rank Math، Voorodak
 // ============================================================================
 
-// نمایش تمپلیت درخواست لایسنس در صفحه مشاهده سفارش
+// نمایش تمپلیت درخواست لایسنس در صفحه مشاهده سفارش (per-product)
 add_action( 'woocommerce_order_details_before_order_table', 'display_elementor_template_before_order_details_table' );
 function display_elementor_template_before_order_details_table( $order ) {
-    $tpl = (int) get_option( 'carno_template_license', 37026 );
-    if ( $tpl ) echo do_shortcode( '[elementor-template id="' . $tpl . '"]' );
+    $tpl_rules = get_option( 'carno_template_licenses', null );
+
+    // Fallback: اگه تنظیمات جدید هنوز ست نشده، از گزینه قدیمی استفاده می‌کنیم
+    if ( $tpl_rules === null ) {
+        $tpl = (int) get_option( 'carno_template_license', 37026 );
+        if ( $tpl ) echo do_shortcode( '[elementor-template id="' . $tpl . '"]' );
+        return;
+    }
+
+    if ( empty( $tpl_rules ) ) return;
+
+    $order_pids = [];
+    foreach ( $order->get_items() as $item ) {
+        $p = $item->get_product();
+        if ( ! $p ) continue;
+        $order_pids[] = $p->get_id();
+        if ( $p->is_type( 'variation' ) ) {
+            $order_pids[] = $p->get_parent_id();
+        }
+    }
+    $order_pids = array_unique( array_filter( $order_pids ) );
+
+    $shown = [];
+    foreach ( $tpl_rules as $rule ) {
+        $pid = (int) ( $rule['product_id'] ?? 0 );
+        $tpl = (int) ( $rule['template_id'] ?? 0 );
+        if ( ! $tpl || ! $pid ) continue;
+        if ( in_array( $pid, $order_pids ) && ! in_array( $tpl, $shown ) ) {
+            echo do_shortcode( '[elementor-template id="' . $tpl . '"]' );
+            $shown[] = $tpl;
+        }
+    }
 }
 
 // ============================================================================

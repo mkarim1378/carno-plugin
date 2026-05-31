@@ -29,6 +29,9 @@ function carno_settings_defaults() {
             ['pid' => 13534, 'amount' => 1020000, 'label' => 'تخفیف ویژه دریافت کنندگان چک لیست پذیرش'],
             ['pid' => 38427, 'amount' => 6600000, 'label' => 'تخفیف ویژه دریافت کنندگان چک لیست پذیرش'],
         ],
+        'packages' => [
+            ['products' => [16180, 13534], 'price' => 5000000],
+        ],
         'qr_message' => 'تبریک! چون شما از همراهان کتاب آکادمی Carno هستید، «بیشترین تخفیف» ممکن به صورت خودکار برای شما اعمال شد. این فرصت فقط تا ۳۰ دقیقه دیگر معتبر است.',
     ];
 }
@@ -82,8 +85,8 @@ function carno_product_select( $name, $selected, $products, $mode = 'with_vars',
             echo '<optgroup label="' . esc_attr( $p['label'] ) . '">';
             foreach ( $p['vars'] as $v ) {
                 printf(
-                    '<option value="%d"%s>%s</option>',
-                    $v['id'], selected( $selected, $v['id'], false ), esc_html( $v['label'] )
+                    '<option value="%d"%s>%s - %s</option>',
+                    $v['id'], selected( $selected, $v['id'], false ), esc_html( $p['label'] ), esc_html( $v['label'] )
                 );
             }
             echo '</optgroup>';
@@ -96,8 +99,8 @@ function carno_product_select( $name, $selected, $products, $mode = 'with_vars',
             );
             foreach ( $p['vars'] as $v ) {
                 printf(
-                    '<option value="%d"%s>&nbsp;&nbsp;↳ %s</option>',
-                    $v['id'], selected( $selected, $v['id'], false ), esc_html( $v['label'] )
+                    '<option value="%d"%s>%s - %s</option>',
+                    $v['id'], selected( $selected, $v['id'], false ), esc_html( $p['label'] ), esc_html( $v['label'] )
                 );
             }
             echo '</optgroup>';
@@ -144,7 +147,7 @@ function carno_handle_save_settings() {
     }
     update_option( 'carno_campaign_prices', $campaign_prices );
 
-    // کمپین ویژه — محصولات redirect-only (از repeater)
+    // کمپین ویژه — محصولات redirect-only
     $redir_ids = [];
     foreach ( (array) ( $_POST['redir_pid'] ?? [] ) as $pid ) {
         $pid = absint( $pid );
@@ -165,7 +168,7 @@ function carno_handle_save_settings() {
     update_option( 'carno_qr_cookie_minutes',   absint( $_POST['carno_qr_cookie_minutes']                ?? 30 ) );
     update_option( 'carno_qr_discount_message', sanitize_textarea_field( $_POST['carno_qr_discount_message'] ?? '' ) );
 
-    // تخفیف‌های سبد — session discounts
+    // تخفیف‌های جلسه‌ای
     $sd = [];
     foreach ( (array) ( $_POST['sd_pid'] ?? [] ) as $i => $pid ) {
         $pid = absint( $pid );
@@ -179,23 +182,36 @@ function carno_handle_save_settings() {
     }
     update_option( 'carno_session_discounts', $sd );
 
-    // تخفیف پکیج (از repeater)
-    $pkg_ids = [];
-    foreach ( (array) ( $_POST['pkg_pid'] ?? [] ) as $pid ) {
-        $pid = absint( $pid );
-        if ( $pid > 0 ) $pkg_ids[] = $pid;
+    // پکیج‌های تخفیف (چند پکیج مستقل)
+    $packages = [];
+    foreach ( (array) ( $_POST['pkg_price'] ?? [] ) as $i => $price ) {
+        $products_raw = (array) ( $_POST['pkg_products'][ $i ] ?? [] );
+        $prods        = array_values( array_filter( array_map( 'absint', $products_raw ) ) );
+        if ( ! empty( $prods ) ) {
+            $packages[] = [ 'products' => $prods, 'price' => absint( $price ) ];
+        }
     }
-    update_option( 'carno_package_product_ids', $pkg_ids );
-    update_option( 'carno_package_final_price', absint( $_POST['carno_package_final_price'] ?? 0 ) );
-    update_option( 'carno_hide_price_hour',     absint( $_POST['carno_hide_price_hour']     ?? 16 ) );
-    update_option( 'carno_timer_css_class',     sanitize_text_field( $_POST['carno_timer_css_class'] ?? 'daily-timer' ) );
+    update_option( 'carno_packages', $packages );
 
-    // محصولات و تمپلیت‌ها
-    update_option( 'carno_template_license',  absint( $_POST['carno_template_license']  ?? 0 ) );
-    update_option( 'carno_vip_product_id',    absint( $_POST['carno_vip_product_id']    ?? 0 ) );
-    update_option( 'carno_vip_variation_id',  absint( $_POST['carno_vip_variation_id']  ?? 0 ) );
+    update_option( 'carno_hide_price_hour', absint( $_POST['carno_hide_price_hour'] ?? 16 ) );
+    update_option( 'carno_timer_css_class', sanitize_text_field( $_POST['carno_timer_css_class'] ?? 'daily-timer' ) );
 
-    // چک‌اوت — محصولات نیازمند آدرس (از repeater)
+    // تمپلیت‌های لایسنس — چند محصول، چند تمپلیت
+    $tpl_licenses = [];
+    foreach ( (array) ( $_POST['tpl_pid'] ?? [] ) as $i => $pid ) {
+        $pid = absint( $pid );
+        $tpl = absint( $_POST['tpl_id'][ $i ] ?? 0 );
+        if ( $pid > 0 && $tpl > 0 ) {
+            $tpl_licenses[] = [ 'product_id' => $pid, 'template_id' => $tpl ];
+        }
+    }
+    update_option( 'carno_template_licenses', $tpl_licenses );
+
+    // VIP
+    update_option( 'carno_vip_product_id',   absint( $_POST['carno_vip_product_id']   ?? 0 ) );
+    update_option( 'carno_vip_variation_id', absint( $_POST['carno_vip_variation_id'] ?? 0 ) );
+
+    // چک‌اوت
     $addr_ids = [];
     foreach ( (array) ( $_POST['addr_pid'] ?? [] ) as $pid ) {
         $pid = absint( $pid );
@@ -215,22 +231,21 @@ function carno_render_settings_page() {
     $d        = carno_settings_defaults();
     $products = carno_get_products_data();
 
-    $campaign_prices        = get_option( 'carno_campaign_prices',          $d['campaign_prices'] );
-    $campaign_redirect_ids  = get_option( 'carno_campaign_redirect_ids',    [] );
-    $qr_prices              = get_option( 'carno_qr_prices',                $d['qr_prices'] );
-    $qr_utm                 = get_option( 'carno_qr_utm_source',            'book_qr' );
-    $qr_cookie_minutes      = get_option( 'carno_qr_cookie_minutes',        30 );
-    $qr_message             = get_option( 'carno_qr_discount_message',      $d['qr_message'] );
-    $session_discounts      = get_option( 'carno_session_discounts',        $d['session_discounts'] );
-    $package_product_ids    = get_option( 'carno_package_product_ids',      [ 16180, 13534 ] );
-    $package_final_price    = get_option( 'carno_package_final_price',      5000000 );
-    $hide_price_hour        = get_option( 'carno_hide_price_hour',          16 );
-    $timer_css_class        = get_option( 'carno_timer_css_class',          'daily-timer' );
-    $template_license       = get_option( 'carno_template_license',         37026 );
-    $vip_product_id         = get_option( 'carno_vip_product_id',           41077 );
-    $vip_variation_id       = get_option( 'carno_vip_variation_id',         41078 );
+    $campaign_prices        = get_option( 'carno_campaign_prices',           $d['campaign_prices'] );
+    $campaign_redirect_ids  = get_option( 'carno_campaign_redirect_ids',     [] );
+    $qr_prices              = get_option( 'carno_qr_prices',                 $d['qr_prices'] );
+    $qr_utm                 = get_option( 'carno_qr_utm_source',             'book_qr' );
+    $qr_cookie_minutes      = get_option( 'carno_qr_cookie_minutes',         30 );
+    $qr_message             = get_option( 'carno_qr_discount_message',       $d['qr_message'] );
+    $session_discounts      = get_option( 'carno_session_discounts',         $d['session_discounts'] );
+    $packages               = get_option( 'carno_packages',                  $d['packages'] );
+    $hide_price_hour        = get_option( 'carno_hide_price_hour',           16 );
+    $timer_css_class        = get_option( 'carno_timer_css_class',           'daily-timer' );
+    $tpl_licenses           = get_option( 'carno_template_licenses',         [] );
+    $vip_product_id         = get_option( 'carno_vip_product_id',            41077 );
+    $vip_variation_id       = get_option( 'carno_vip_variation_id',          41078 );
     $address_required_prods = get_option( 'carno_address_required_products', [ 13534 ] );
-    $coupon_label           = get_option( 'carno_coupon_label',             'سود شما از این خرید' );
+    $coupon_label           = get_option( 'carno_coupon_label',              'سود شما از این خرید' );
 
     $active_tab = sanitize_key( $_GET['tab'] ?? 'campaign' );
     $saved      = isset( $_GET['saved'] );
@@ -331,8 +346,8 @@ function carno_render_settings_page() {
                         <?php foreach ( $session_discounts as $row ) : ?>
                         <tr>
                             <td><?php carno_product_select( 'sd_pid[]', $row['pid'], $products, 'with_vars', 'width:100%' ); ?></td>
-                            <td><input type="number" name="sd_amount[]" value="<?php echo esc_attr( $row['amount'] ); ?>" class="regular-text" style="width:100%;box-sizing:border-box"></td>
-                            <td><input type="text"   name="sd_label[]"  value="<?php echo esc_attr( $row['label'] ); ?>"  class="regular-text" style="width:100%;box-sizing:border-box"></td>
+                            <td><input type="number" name="sd_amount[]" value="<?php echo esc_attr( $row['amount'] ); ?>" style="width:100%;box-sizing:border-box"></td>
+                            <td><input type="text"   name="sd_label[]"  value="<?php echo esc_attr( $row['label'] ); ?>"  style="width:100%;box-sizing:border-box"></td>
                             <td><button type="button" class="button carno-remove-row">حذف</button></td>
                         </tr>
                         <?php endforeach; ?>
@@ -345,20 +360,41 @@ function carno_render_settings_page() {
                 </button>
 
                 <hr>
-                <h3>تخفیف پکیج</h3>
-                <p class="description">اگر همه محصولات زیر در سبد باشند، قیمت نهایی پکیج اعمال می‌شود.</p>
-                <?php carno_render_product_list_table( 'pkg-table', 'pkg_pid', $package_product_ids, $products, 'products' ); ?>
-                <button type="button" class="button carno-add-row"
-                    data-table="pkg-table" data-row-type="product"
-                    data-pid-name="pkg_pid[]" data-mode="products">
-                    + افزودن محصول
-                </button>
-                <table class="form-table" style="margin-top:16px">
-                    <tr>
-                        <th scope="row">قیمت نهایی پکیج (تومان)</th>
-                        <td><input type="number" name="carno_package_final_price" value="<?php echo esc_attr( $package_final_price ); ?>" class="regular-text"></td>
-                    </tr>
-                </table>
+                <h3>پکیج‌های تخفیف</h3>
+                <p class="description">اگر همه محصولات یک پکیج در سبد باشند، قیمت نهایی آن پکیج اعمال می‌شود. می‌توان چند پکیج مستقل تعریف کرد.</p>
+
+                <div id="carno-packages">
+                    <?php foreach ( $packages as $i => $pkg ) : ?>
+                    <div class="carno-package-card" data-pkg-index="<?php echo $i; ?>">
+                        <div class="carno-pkg-header">
+                            <strong class="carno-pkg-label">پکیج <?php echo $i + 1; ?></strong>
+                            <button type="button" class="button carno-remove-package">حذف پکیج</button>
+                        </div>
+                        <table class="wp-list-table widefat fixed striped carno-repeater-table" id="pkg-table-<?php echo $i; ?>">
+                            <thead>
+                                <tr>
+                                    <th>محصول</th>
+                                    <th style="width:60px"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ( (array) $pkg['products'] as $pid ) : ?>
+                                <tr>
+                                    <td><?php carno_product_select( "pkg_products[{$i}][]", $pid, $products, 'products', 'width:100%' ); ?></td>
+                                    <td><button type="button" class="button carno-remove-row">حذف</button></td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                        <button type="button" class="button carno-add-pkg-product" data-pkg-index="<?php echo $i; ?>">+ افزودن محصول به پکیج</button>
+                        <div class="carno-pkg-price">
+                            <label>قیمت نهایی پکیج (تومان):</label>
+                            <input type="number" name="pkg_price[<?php echo $i; ?>]" value="<?php echo esc_attr( $pkg['price'] ); ?>" class="regular-text">
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <button type="button" class="button button-secondary" id="carno-add-package">+ افزودن پکیج جدید</button>
 
                 <hr>
                 <h3>پنهان‌سازی قیمت تخفیف‌دار</h3>
@@ -384,14 +420,31 @@ function carno_render_settings_page() {
             <div class="carno-tab-panel<?php echo $active_tab === 'products' ? ' is-active' : ''; ?>" data-panel="products">
                 <h2>محصولات و تمپلیت‌های Elementor</h2>
 
-                <h3>تمپلیت درخواست لایسنس</h3>
-                <p class="description">قبل از جدول سفارش در صفحه «مشاهده سفارش» نمایش داده می‌شود.</p>
-                <table class="form-table">
-                    <tr>
-                        <th scope="row">شناسه تمپلیت Elementor</th>
-                        <td><input type="number" name="carno_template_license" value="<?php echo esc_attr( $template_license ); ?>" class="small-text"></td>
-                    </tr>
+                <h3>تمپلیت‌های درخواست لایسنس</h3>
+                <p class="description">برای هر محصول، تمپلیت Elementor متناظر را مشخص کنید. قبل از جدول سفارش در صفحه «مشاهده سفارش» نمایش داده می‌شود.</p>
+                <table class="wp-list-table widefat fixed striped carno-repeater-table" id="tpl-table">
+                    <thead>
+                        <tr>
+                            <th>محصول</th>
+                            <th style="width:200px">شناسه تمپلیت Elementor</th>
+                            <th style="width:60px"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ( $tpl_licenses as $row ) : ?>
+                        <tr>
+                            <td><?php carno_product_select( 'tpl_pid[]', $row['product_id'], $products, 'products', 'width:100%' ); ?></td>
+                            <td><input type="number" name="tpl_id[]" value="<?php echo esc_attr( $row['template_id'] ); ?>" style="width:100%;box-sizing:border-box"></td>
+                            <td><button type="button" class="button carno-remove-row">حذف</button></td>
+                        </tr>
+                        <?php endforeach; ?>
+                    </tbody>
                 </table>
+                <button type="button" class="button carno-add-row"
+                    data-table="tpl-table" data-row-type="template"
+                    data-pid-name="tpl_pid[]" data-tpl-name="tpl_id[]" data-mode="products">
+                    + افزودن ردیف
+                </button>
 
                 <hr>
                 <h3>باکس VIP کرهای</h3>
@@ -455,13 +508,21 @@ function carno_render_settings_page() {
     .carno-repeater-table td, .carno-repeater-table th { padding: 6px 8px; vertical-align: middle; }
     .carno-product-select { width: 100%; box-sizing: border-box; }
     .carno-wrap .button.carno-add-row { margin-top: 8px; }
+    #carno-packages { display: flex; flex-direction: column; gap: 16px; margin-bottom: 12px; }
+    .carno-package-card { border: 1px solid #c3c4c7; border-radius: 4px; padding: 16px 20px; background: #f9f9f9; }
+    .carno-pkg-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+    .carno-pkg-header strong { font-size: 15px; }
+    .carno-pkg-price { margin-top: 12px; display: flex; align-items: center; gap: 12px; }
+    .carno-pkg-price label { font-weight: 600; white-space: nowrap; }
+    .carno-add-pkg-product { margin-top: 8px !important; }
     </style>
 
     <script>
     window.carnoProductsData = <?php echo wp_json_encode( $products ); ?>;
+    var carnoPackageCounter  = <?php echo count( $packages ); ?>;
 
     (function () {
-        // تب‌ها
+        // ── تب‌ها ──
         function switchTab(tab) {
             document.querySelectorAll('.carno-tab-btn').forEach(function (btn) {
                 btn.classList.toggle('is-active', btn.dataset.tab === tab);
@@ -475,8 +536,9 @@ function carno_render_settings_page() {
             btn.addEventListener('click', function () { switchTab(this.dataset.tab); });
         });
 
-        // ساخت select محصول
-        function buildProductSelect(name, mode) {
+        // ── ساخت select محصول ──
+        function buildProductSelect(name, mode, excludedIds) {
+            excludedIds = excludedIds || [];
             var sel = document.createElement('select');
             sel.name = name;
             sel.className = 'carno-product-select';
@@ -492,45 +554,66 @@ function carno_render_settings_page() {
 
                 if (mode === 'vars_only') {
                     if (!hasVars) return;
+                    var filtered = p.vars.filter(function (v) { return excludedIds.indexOf(v.id) === -1; });
+                    if (!filtered.length) return;
                     var grp = document.createElement('optgroup');
                     grp.label = p.label;
-                    p.vars.forEach(function (v) { grp.appendChild(new Option(v.label, v.id)); });
+                    filtered.forEach(function (v) {
+                        grp.appendChild(new Option(p.label + ' - ' + v.label, v.id));
+                    });
                     sel.appendChild(grp);
 
                 } else if (mode === 'with_vars' && hasVars) {
+                    var filteredVars = p.vars.filter(function (v) { return excludedIds.indexOf(v.id) === -1; });
+                    var parentExcl   = excludedIds.indexOf(p.id) !== -1;
+                    if (parentExcl && !filteredVars.length) return;
                     var grp = document.createElement('optgroup');
                     grp.label = p.label;
-                    grp.appendChild(new Option(p.label, p.id));
-                    p.vars.forEach(function (v) { grp.appendChild(new Option('  ↳ ' + v.label, v.id)); });
+                    if (!parentExcl) grp.appendChild(new Option(p.label, p.id));
+                    filteredVars.forEach(function (v) {
+                        grp.appendChild(new Option(p.label + ' - ' + v.label, v.id));
+                    });
+                    if (!grp.children.length) return;
                     sel.appendChild(grp);
 
                 } else {
+                    if (excludedIds.indexOf(p.id) !== -1) return;
                     sel.appendChild(new Option(p.label, p.id));
                 }
             });
             return sel;
         }
 
-        // حذف ردیف
+        // ── جمع‌آوری آیدی‌های انتخاب‌شده در یک جدول ──
+        function getSelectedIds(tableId, selectName) {
+            var ids = [];
+            document.querySelectorAll('#' + tableId + ' select[name="' + selectName + '"]').forEach(function (s) {
+                var v = parseInt(s.value, 10);
+                if (v > 0) ids.push(v);
+            });
+            return ids;
+        }
+
+        // ── حذف ردیف ──
         document.addEventListener('click', function (e) {
             if (e.target.classList.contains('carno-remove-row')) {
                 e.target.closest('tr').remove();
             }
         });
 
-        // افزودن ردیف
+        // ── افزودن ردیف (جداول معمولی) ──
         document.querySelectorAll('.carno-add-row').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 var tableId  = this.dataset.table;
                 var rowType  = this.dataset.rowType;
                 var pidName  = this.dataset.pidName;
                 var mode     = this.dataset.mode || 'with_vars';
+                var excluded = getSelectedIds(tableId, pidName);
                 var tbody    = document.querySelector('#' + tableId + ' tbody');
                 var tr       = document.createElement('tr');
 
-                // ستون select محصول
                 var tdPid = document.createElement('td');
-                tdPid.appendChild(buildProductSelect(pidName, mode));
+                tdPid.appendChild(buildProductSelect(pidName, mode, excluded));
                 tr.appendChild(tdPid);
 
                 if (rowType === 'price') {
@@ -555,8 +638,15 @@ function carno_render_settings_page() {
                     inpLbl.style.cssText = 'width:100%;box-sizing:border-box';
                     tdLbl.appendChild(inpLbl);
                     tr.appendChild(tdLbl);
+
+                } else if (rowType === 'template') {
+                    var tdTpl = document.createElement('td');
+                    var inpTpl = document.createElement('input');
+                    inpTpl.type = 'number'; inpTpl.name = this.dataset.tplName;
+                    inpTpl.style.cssText = 'width:100%;box-sizing:border-box';
+                    tdTpl.appendChild(inpTpl);
+                    tr.appendChild(tdTpl);
                 }
-                // 'product': فقط select، بدون ستون اضافه
 
                 var tdDel = document.createElement('td');
                 var btnDel = document.createElement('button');
@@ -567,6 +657,74 @@ function carno_render_settings_page() {
                 tbody.appendChild(tr);
             });
         });
+
+        // ── پکیج‌ها ──
+        function renumberPackages() {
+            document.querySelectorAll('.carno-package-card .carno-pkg-label').forEach(function (el, i) {
+                el.textContent = 'پکیج ' + (i + 1);
+            });
+        }
+
+        // افزودن محصول به پکیج (event delegation)
+        document.addEventListener('click', function (e) {
+            if (!e.target.classList.contains('carno-add-pkg-product')) return;
+            var pkgIdx  = e.target.dataset.pkgIndex;
+            var tblId   = 'pkg-table-' + pkgIdx;
+            var selName = 'pkg_products[' + pkgIdx + '][]';
+            var excluded = getSelectedIds(tblId, selName);
+
+            var tbody = document.querySelector('#' + tblId + ' tbody');
+            var tr    = document.createElement('tr');
+
+            var tdPid = document.createElement('td');
+            tdPid.appendChild(buildProductSelect(selName, 'products', excluded));
+            tr.appendChild(tdPid);
+
+            var tdDel = document.createElement('td');
+            var btnDel = document.createElement('button');
+            btnDel.type = 'button'; btnDel.className = 'button carno-remove-row'; btnDel.textContent = 'حذف';
+            tdDel.appendChild(btnDel);
+            tr.appendChild(tdDel);
+
+            tbody.appendChild(tr);
+        });
+
+        // حذف پکیج
+        document.addEventListener('click', function (e) {
+            if (!e.target.classList.contains('carno-remove-package')) return;
+            e.target.closest('.carno-package-card').remove();
+            renumberPackages();
+        });
+
+        // افزودن پکیج جدید
+        document.getElementById('carno-add-package').addEventListener('click', function () {
+            var idx  = carnoPackageCounter++;
+            var card = document.createElement('div');
+            card.className        = 'carno-package-card';
+            card.dataset.pkgIndex = idx;
+
+            var tblId   = 'pkg-table-' + idx;
+            var selName = 'pkg_products[' + idx + '][]';
+
+            card.innerHTML =
+                '<div class="carno-pkg-header">' +
+                    '<strong class="carno-pkg-label">پکیج جدید</strong>' +
+                    '<button type="button" class="button carno-remove-package">حذف پکیج</button>' +
+                '</div>' +
+                '<table class="wp-list-table widefat fixed striped carno-repeater-table" id="' + tblId + '">' +
+                    '<thead><tr><th>محصول</th><th style="width:60px"></th></tr></thead>' +
+                    '<tbody></tbody>' +
+                '</table>' +
+                '<button type="button" class="button carno-add-pkg-product" data-pkg-index="' + idx + '">+ افزودن محصول به پکیج</button>' +
+                '<div class="carno-pkg-price">' +
+                    '<label>قیمت نهایی پکیج (تومان):</label>' +
+                    '<input type="number" name="pkg_price[' + idx + ']" class="regular-text">' +
+                '</div>';
+
+            document.getElementById('carno-packages').appendChild(card);
+            renumberPackages();
+        });
+
     })();
     </script>
     <?php
