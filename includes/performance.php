@@ -112,13 +112,28 @@ function nias_disable_emojis_tinymce($plugins) {
     }
 }
 
-// حذف استایل‌های Elementor در صفحه eps
+// حذف همه استایل‌ها و اسکریپت‌ها در صفحه eps (به جز whitelist)
 add_action('wp_enqueue_scripts', function() {
-    if (is_page('eps')) {
-        wp_dequeue_style('elementor-frontend');
-        wp_dequeue_style('elementor-icons');
+    if ( ! is_page('eps') ) return;
+
+    global $wp_styles, $wp_scripts;
+
+    $keep_styles = [ 'admin-bar' ];
+    foreach ( $wp_styles->queue as $handle ) {
+        if ( ! in_array( $handle, $keep_styles ) ) {
+            wp_dequeue_style( $handle );
+            wp_deregister_style( $handle );
+        }
     }
-}, 100);
+
+    $keep_scripts = [ 'admin-bar', 'wp-hooks', 'wp-i18n', 'wp-polyfill' ];
+    foreach ( $wp_scripts->queue as $handle ) {
+        if ( ! in_array( $handle, $keep_scripts ) ) {
+            wp_dequeue_script( $handle );
+            wp_deregister_script( $handle );
+        }
+    }
+}, PHP_INT_MAX );
 
 // حذف jquery-migrate
 add_action('wp_enqueue_scripts', function() {
