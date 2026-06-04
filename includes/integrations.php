@@ -280,12 +280,14 @@ function carno_create_campaign_form_order( $entry, $form, $campaign ) {
     // جلوگیری از ساخت سفارش تکراری
     if ( gform_get_meta( $entry['id'], 'carno_wc_order_id' ) ) return;
 
-    $full_name  = rgar( $entry, '9' );
-    $raw_phone  = rgar( $entry, '8' );
-    $parts      = explode( ' ', trim( $full_name ), 2 );
-    $first_name = $parts[0];
-    $last_name  = isset( $parts[1] ) ? $parts[1] : '';
-    $phone      = ltrim( $raw_phone, '0' );
+    $name_field  = ! empty( $campaign['name_field'] )  ? (string) $campaign['name_field']  : '9';
+    $phone_field = ! empty( $campaign['phone_field'] ) ? (string) $campaign['phone_field'] : '8';
+    $full_name   = rgar( $entry, $name_field );
+    $raw_phone   = rgar( $entry, $phone_field );
+    $parts       = explode( ' ', trim( $full_name ), 2 );
+    $first_name  = $parts[0];
+    $last_name   = isset( $parts[1] ) ? $parts[1] : '';
+    $phone       = ltrim( $raw_phone, '0' );
 
     $order = wc_create_order();
 

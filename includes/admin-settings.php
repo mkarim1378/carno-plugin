@@ -242,9 +242,11 @@ function carno_handle_save_settings() {
         $prods = array_values( array_filter( array_map( 'absint', (array) ( $_POST['cf_products'][ $i ] ?? [] ) ) ) );
         if ( $fid > 0 && ! empty( $prods ) ) {
             $campaign_forms[] = [
-                'form_id'  => $fid,
-                'label'    => sanitize_text_field( $_POST['cf_label'][ $i ] ?? '' ),
-                'products' => $prods,
+                'form_id'     => $fid,
+                'label'       => sanitize_text_field( $_POST['cf_label'][ $i ] ?? '' ),
+                'name_field'  => absint( $_POST['cf_name_field'][ $i ] ?? 0 ),
+                'phone_field' => absint( $_POST['cf_phone_field'][ $i ] ?? 0 ),
+                'products'    => $prods,
             ];
         }
     }
@@ -540,6 +542,14 @@ function carno_render_settings_page() {
                             <tr>
                                 <th scope="row">لیبل (اختیاری)</th>
                                 <td><input type="text" name="cf_label[<?php echo $i; ?>]" value="<?php echo esc_attr( $cf['label'] ?? '' ); ?>" class="regular-text" placeholder="مثلاً: کمپین تابستان ۱۴۰۴"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row">شناسه فیلد نام (GF)</th>
+                                <td><input type="number" name="cf_name_field[<?php echo $i; ?>]" value="<?php echo esc_attr( $cf['name_field'] ?? '' ); ?>" class="small-text" min="1" placeholder="مثلاً: 3"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row">شناسه فیلد موبایل (GF)</th>
+                                <td><input type="number" name="cf_phone_field[<?php echo $i; ?>]" value="<?php echo esc_attr( $cf['phone_field'] ?? '' ); ?>" class="small-text" min="1" placeholder="مثلاً: 4"></td>
                             </tr>
                         </table>
                         <p class="description" style="margin-bottom:6px">محصولاتی که با سابمیت این فرم به سفارش اضافه می‌شوند:</p>
@@ -990,6 +1000,14 @@ function carno_render_settings_page() {
                     '<tr>' +
                         '<th scope="row">لیبل (اختیاری)</th>' +
                         '<td><input type="text" name="cf_label[' + idx + ']" class="regular-text" placeholder="مثلاً: کمپین تابستان ۱۴۰۴"></td>' +
+                    '</tr>' +
+                    '<tr>' +
+                        '<th scope="row">شناسه فیلد نام (GF)</th>' +
+                        '<td><input type="number" name="cf_name_field[' + idx + ']" class="small-text" min="1" placeholder="مثلاً: 3"></td>' +
+                    '</tr>' +
+                    '<tr>' +
+                        '<th scope="row">شناسه فیلد موبایل (GF)</th>' +
+                        '<td><input type="number" name="cf_phone_field[' + idx + ']" class="small-text" min="1" placeholder="مثلاً: 4"></td>' +
                     '</tr>' +
                 '</table>' +
                 '<p class="description" style="margin-bottom:6px">محصولاتی که با سابمیت این فرم به سفارش اضافه می‌شوند:</p>' +
