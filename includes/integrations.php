@@ -137,6 +137,16 @@ function carno_create_pending_wc_order_on_submission( $entry, $form ) {
     $online_form_id = 43;
     $onsite_form_id = 42;
 
+    // بررسی فرم‌های کمپین داینامیک (تعریف‌شده در تنظیمات ادمین)
+    $cf_map = [];
+    foreach ( carno_get_campaign_forms() as $cf ) {
+        $cf_map[ (int) $cf['form_id'] ] = $cf;
+    }
+    if ( array_key_exists( (int) $form['id'], $cf_map ) ) {
+        carno_create_campaign_form_order( $entry, $form, $cf_map[ (int) $form['id'] ] );
+        return;
+    }
+
     if ( ! in_array( (int) $form['id'], [ $online_form_id, $onsite_form_id ] ) ) return;
 
     // جلوگیری از ساخت سفارش تکراری برای همین entry
@@ -262,6 +272,79 @@ function carno_create_pending_wc_order_on_submission( $entry, $form ) {
     $order->save();
 
     // ذخیره آیدی سفارش در متادیتای entry برای مراحل بعدی
+    gform_update_meta( $entry['id'], 'carno_wc_order_id', $order->get_id() );
+}
+
+// ساخت سفارش WC برای فرم‌های کمپین داینامیک
+function carno_create_campaign_form_order( $entry, $form, $campaign ) {
+    // جلوگیری از ساخت سفارش تکراری
+    if ( gform_get_meta( $entry['id'], 'carno_wc_order_id' ) ) return;
+
+    $full_name  = rgar( $entry, '9' );
+    $raw_phone  = rgar( $entry, '8' );
+    $parts      = explode( ' ', trim( $full_name ), 2 );
+    $first_name = $parts[0];
+    $last_name  = isset( $parts[1] ) ? $parts[1] : '';
+    $phone      = ltrim( $raw_phone, '0' );
+
+    $order = wc_create_order();
+
+    foreach ( (array) ( $campaign['products'] ?? [] ) as $pid ) {
+        $product = wc_get_product( (int) $pid );
+        if ( $product ) {
+            $order->add_product( $product, 1 );
+        }
+    }
+
+    $order->set_address( [
+        'first_name' => $first_name,
+        'last_name'  => $last_name,
+        'phone'      => $phone,
+    ], 'billing' );
+
+    $order->update_meta_data( '_created_via', 'gravity_forms' );
+    $order->update_meta_data( '_gf_form_id', $form['id'] );
+    $order->update_meta_data( '_gf_entry_id', $entry['id'] );
+    $order->set_payment_method( 'gf_carno' );
+    $order->set_payment_method_title( 'پرداخت از طریق فرم (آکادمی کارنو)' );
+
+    $attr_fields = [
+        'source_type', 'referrer',
+        'utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_id', 'utm_term',
+        'session_entry', 'session_start_time', 'session_pages', 'session_count',
+        'user_agent', 'device_type', 'gclid', 'fbclid',
+    ];
+    $cookie_prefix   = 'woocommerce_order_attribution_';
+    $has_attribution = false;
+    foreach ( $attr_fields as $field ) {
+        $cookie_val = isset( $_COOKIE[ $cookie_prefix . $field ] ) ? $_COOKIE[ $cookie_prefix . $field ] : '';
+        if ( $cookie_val !== '' ) {
+            $order->update_meta_data( '_wc_order_attribution_' . $field, sanitize_text_field( $cookie_val ) );
+            if ( $field === 'utm_source' || $field === 'source_type' ) {
+                $has_attribution = true;
+            }
+        }
+    }
+    if ( ! $has_attribution ) {
+        $order->update_meta_data( '_wc_order_attribution_source_type', 'direct' );
+    }
+
+    $order->calculate_totals();
+    $order->set_status( 'pending' );
+
+    $form_label = ! empty( $campaign['label'] ) ? $campaign['label'] : ( 'فرم کمپین #' . $form['id'] );
+    $order->add_order_note(
+        sprintf(
+            "ثبت‌نام از طریق فرم گرویتی — %s\nنام: %s\nموبایل: %s\nفرم: #%d (entry: #%d)",
+            $form_label,
+            $full_name,
+            $raw_phone,
+            $form['id'],
+            $entry['id']
+        )
+    );
+
+    $order->save();
     gform_update_meta( $entry['id'], 'carno_wc_order_id', $order->get_id() );
 }
 
@@ -469,6 +552,11 @@ function carno_gf_coupon_ui() {
 }
 -- */
 
+// تابع کمکی: بارگذاری فرم‌های کمپین از تنظیمات ادمین
+function carno_get_campaign_forms() {
+    return (array) get_option( 'carno_campaign_forms', [] );
+}
+
 // تابع کمکی: پیدا کردن WC order مرتبط با GF entry
 function carno_get_wc_order_for_gf_entry( $entry_id ) {
     // اول از GF meta می‌خوانیم
@@ -493,7 +581,8 @@ function carno_get_wc_order_for_gf_entry( $entry_id ) {
 // اگر این hook به هر دلیلی order را آپدیت نکند، گام ۳ به عنوان backup عمل می‌کند
 add_action( 'gform_aqayepardakht_fulfillment', 'carno_handle_aqayepardakht_success', 10, 4 );
 function carno_handle_aqayepardakht_success( $entry, $config, $transaction_id, $total ) {
-    if ( ! in_array( (int) rgar( $entry, 'form_id' ), [ 42, 43 ] ) ) return;
+    $handled = array_merge( [ 42, 43 ], array_column( carno_get_campaign_forms(), 'form_id' ) );
+    if ( ! in_array( (int) rgar( $entry, 'form_id' ), $handled ) ) return;
     carno_set_gf_order_status( $entry['id'], 'completed', $transaction_id );
 }
 
@@ -501,7 +590,8 @@ function carno_handle_aqayepardakht_success( $entry, $config, $transaction_id, $
 // این hook همیشه fire می‌شود (موفق، لغو، ناموفق) و به عنوان backup موفق نیز عمل می‌کند
 add_action( 'gform_post_payment_status', 'carno_handle_gf_payment_status', 10, 8 );
 function carno_handle_gf_payment_status( $config, $entry, $status, $transaction_id, $p5, $total, $p7, $p8 ) {
-    if ( ! in_array( (int) rgar( $entry, 'form_id' ), [ 42, 43 ] ) ) return;
+    $handled = array_merge( [ 42, 43 ], array_column( carno_get_campaign_forms(), 'form_id' ) );
+    if ( ! in_array( (int) rgar( $entry, 'form_id' ), $handled ) ) return;
     carno_set_gf_order_status( $entry['id'], $status, $transaction_id );
 }
 
@@ -521,6 +611,9 @@ function carno_set_gf_order_status( $entry_id, $status, $transaction_id ) {
 
     // لغو یا ناموفق — فقط اگر سفارش هنوز تکمیل نشده باشد
     if ( $order->has_status( 'completed' ) ) return;
+    // فرم‌های کمپین: پرداخت ناموفق → در انتظار پرداخت باقی می‌ماند (لغو نمی‌شود)
+    $campaign_form_ids = array_column( carno_get_campaign_forms(), 'form_id' );
+    if ( in_array( (int) $order->get_meta( '_gf_form_id' ), $campaign_form_ids ) ) return;
     $label = ( $status === 'cancelled' ) ? 'منصرف شده' : 'ناموفق';
     $order->update_status( 'cancelled', 'پرداخت ' . $label . ' از طریق آقای پرداخت' );
 }

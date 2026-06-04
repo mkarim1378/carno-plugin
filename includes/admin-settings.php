@@ -36,6 +36,7 @@ function carno_settings_defaults() {
         'template_rules' => [
             ['template_id' => 37026, 'mode' => 'blacklist', 'products' => []],
         ],
+        'campaign_forms' => [],
     ];
 }
 
@@ -234,6 +235,21 @@ function carno_handle_save_settings() {
     update_option( 'carno_address_required_products', $addr_ids );
     update_option( 'carno_coupon_label', sanitize_text_field( $_POST['carno_coupon_label'] ?? '' ) );
 
+    // فرم‌های کمپین
+    $campaign_forms = [];
+    foreach ( (array) ( $_POST['cf_form_id'] ?? [] ) as $i => $fid ) {
+        $fid   = absint( $fid );
+        $prods = array_values( array_filter( array_map( 'absint', (array) ( $_POST['cf_products'][ $i ] ?? [] ) ) ) );
+        if ( $fid > 0 && ! empty( $prods ) ) {
+            $campaign_forms[] = [
+                'form_id'  => $fid,
+                'label'    => sanitize_text_field( $_POST['cf_label'][ $i ] ?? '' ),
+                'products' => $prods,
+            ];
+        }
+    }
+    update_option( 'carno_campaign_forms', $campaign_forms );
+
     $active_tab = sanitize_key( $_POST['_active_tab'] ?? 'campaign' );
     wp_redirect( add_query_arg( [ 'page' => 'carno-settings', 'saved' => '1', 'tab' => $active_tab ], admin_url( 'admin.php' ) ) );
     exit;
@@ -256,6 +272,7 @@ function carno_render_settings_page() {
     $hide_price_hour        = get_option( 'carno_hide_price_hour',           16 );
     $timer_css_class        = get_option( 'carno_timer_css_class',           'daily-timer' );
     $tpl_rules              = get_option( 'carno_template_rules',             $d['template_rules'] );
+    $campaign_forms         = get_option( 'carno_campaign_forms',            $d['campaign_forms'] );
     $address_required_prods = get_option( 'carno_address_required_products', [ 13534 ] );
     $coupon_label           = get_option( 'carno_coupon_label',              'سود شما از این خرید' );
 
@@ -263,11 +280,12 @@ function carno_render_settings_page() {
     $saved      = isset( $_GET['saved'] );
 
     $tabs = [
-        'campaign' => 'کمپین ویژه',
-        'qr'       => 'تخفیف QR / کتاب',
-        'cart'     => 'تخفیف‌های سبد',
-        'products' => 'محصولات و تمپلیت‌ها',
-        'checkout' => 'چک‌اوت',
+        'campaign'       => 'کمپین ویژه',
+        'qr'             => 'تخفیف QR / کتاب',
+        'cart'           => 'تخفیف‌های سبد',
+        'products'       => 'محصولات و تمپلیت‌ها',
+        'checkout'       => 'چک‌اوت',
+        'campaign_forms' => 'فرم‌های کمپین',
     ];
     ?>
     <div class="wrap carno-wrap" dir="rtl">
@@ -499,6 +517,50 @@ function carno_render_settings_page() {
                 </table>
             </div>
 
+            <?php // ── TAB: فرم‌های کمپین ── ?>
+            <div class="carno-tab-panel<?php echo $active_tab === 'campaign_forms' ? ' is-active' : ''; ?>" data-panel="campaign_forms">
+                <h2>فرم‌های کمپین (Gravity Forms → سفارش WooCommerce)</h2>
+                <p class="description">
+                    با سابمیت شدن هر فرم، یک سفارش ووکامرس با محصولات تعریف‌شده ساخته می‌شود.<br>
+                    <strong>پرداخت موفق</strong> ← تکمیل شده &nbsp;|&nbsp; <strong>پرداخت ناموفق</strong> ← در انتظار پرداخت (بر خلاف فرم‌های ۴۲/۴۳)
+                </p>
+
+                <div id="carno-cf-cards">
+                    <?php foreach ( $campaign_forms as $i => $cf ) : ?>
+                    <div class="carno-package-card" data-cf-index="<?php echo $i; ?>">
+                        <div class="carno-pkg-header">
+                            <strong class="carno-cf-card-label">فرم کمپین <?php echo $i + 1; ?></strong>
+                            <button type="button" class="button carno-remove-cf">حذف فرم</button>
+                        </div>
+                        <table class="form-table" style="margin-bottom:8px">
+                            <tr>
+                                <th scope="row" style="width:180px">شناسه فرم (GF)</th>
+                                <td><input type="number" name="cf_form_id[<?php echo $i; ?>]" value="<?php echo esc_attr( $cf['form_id'] ); ?>" class="small-text" min="1"></td>
+                            </tr>
+                            <tr>
+                                <th scope="row">لیبل (اختیاری)</th>
+                                <td><input type="text" name="cf_label[<?php echo $i; ?>]" value="<?php echo esc_attr( $cf['label'] ?? '' ); ?>" class="regular-text" placeholder="مثلاً: کمپین تابستان ۱۴۰۴"></td>
+                            </tr>
+                        </table>
+                        <p class="description" style="margin-bottom:6px">محصولاتی که با سابمیت این فرم به سفارش اضافه می‌شوند:</p>
+                        <table class="wp-list-table widefat fixed striped carno-repeater-table" id="cf-prod-table-<?php echo $i; ?>">
+                            <thead><tr><th>محصول / وارییشن</th><th style="width:60px"></th></tr></thead>
+                            <tbody>
+                                <?php foreach ( (array) ( $cf['products'] ?? [] ) as $pid ) : ?>
+                                <tr>
+                                    <td><?php carno_product_select( "cf_products[{$i}][]", $pid, $products, 'with_vars', 'width:100%' ); ?></td>
+                                    <td><button type="button" class="button carno-remove-row">حذف</button></td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                        <button type="button" class="button carno-add-cf-product" data-cf-index="<?php echo $i; ?>" style="margin-top:8px">+ افزودن محصول</button>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <button type="button" class="button button-secondary" id="carno-add-cf" style="margin-top:12px">+ افزودن فرم کمپین جدید</button>
+            </div>
+
             <div class="carno-save-bar">
                 <input type="submit" class="button button-primary button-large" value="ذخیره تنظیمات">
             </div>
@@ -538,6 +600,7 @@ function carno_render_settings_page() {
     window.carnoProductsData  = <?php echo wp_json_encode( $products ); ?>;
     var carnoPackageCounter   = <?php echo count( $packages ); ?>;
     var carnoTplRuleCounter   = <?php echo count( $tpl_rules ); ?>;
+    var carnoCfCounter        = <?php echo count( $campaign_forms ); ?>;
     var carnoTplTitleNonce    = <?php echo wp_json_encode( wp_create_nonce( 'carno_tpl_title' ) ); ?>;
 
     (function () {
@@ -873,6 +936,72 @@ function carno_render_settings_page() {
                 });
             });
         }).observe(document.getElementById('carno-tpl-rules'), { childList: true, subtree: true });
+
+        // ── فرم‌های کمپین ──
+        function renumberCfCards() {
+            document.querySelectorAll('#carno-cf-cards .carno-cf-card-label').forEach(function(el, i) {
+                el.textContent = 'فرم کمپین ' + (i + 1);
+            });
+        }
+
+        document.addEventListener('click', function(e) {
+            if (!e.target.classList.contains('carno-remove-cf')) return;
+            e.target.closest('.carno-package-card').remove();
+            renumberCfCards();
+        });
+
+        document.addEventListener('click', function(e) {
+            if (!e.target.classList.contains('carno-add-cf-product')) return;
+            var cfIdx    = e.target.dataset.cfIndex;
+            var tblId    = 'cf-prod-table-' + cfIdx;
+            var selName  = 'cf_products[' + cfIdx + '][]';
+            var excluded = getSelectedIds(tblId, selName);
+
+            var tbody = document.querySelector('#' + tblId + ' tbody');
+            var tr    = document.createElement('tr');
+            var tdPid = document.createElement('td');
+            tdPid.appendChild(buildProductSelect(selName, 'with_vars', excluded));
+            tr.appendChild(tdPid);
+            var tdDel  = document.createElement('td');
+            var btnDel = document.createElement('button');
+            btnDel.type = 'button'; btnDel.className = 'button carno-remove-row'; btnDel.textContent = 'حذف';
+            tdDel.appendChild(btnDel);
+            tr.appendChild(tdDel);
+            tbody.appendChild(tr);
+        });
+
+        document.getElementById('carno-add-cf').addEventListener('click', function() {
+            var idx    = carnoCfCounter++;
+            var tblId  = 'cf-prod-table-' + idx;
+            var card   = document.createElement('div');
+            card.className       = 'carno-package-card';
+            card.dataset.cfIndex = idx;
+
+            card.innerHTML =
+                '<div class="carno-pkg-header">' +
+                    '<strong class="carno-cf-card-label">فرم کمپین جدید</strong>' +
+                    '<button type="button" class="button carno-remove-cf">حذف فرم</button>' +
+                '</div>' +
+                '<table class="form-table" style="margin-bottom:8px">' +
+                    '<tr>' +
+                        '<th scope="row" style="width:180px">شناسه فرم (GF)</th>' +
+                        '<td><input type="number" name="cf_form_id[' + idx + ']" class="small-text" min="1"></td>' +
+                    '</tr>' +
+                    '<tr>' +
+                        '<th scope="row">لیبل (اختیاری)</th>' +
+                        '<td><input type="text" name="cf_label[' + idx + ']" class="regular-text" placeholder="مثلاً: کمپین تابستان ۱۴۰۴"></td>' +
+                    '</tr>' +
+                '</table>' +
+                '<p class="description" style="margin-bottom:6px">محصولاتی که با سابمیت این فرم به سفارش اضافه می‌شوند:</p>' +
+                '<table class="wp-list-table widefat fixed striped carno-repeater-table" id="' + tblId + '">' +
+                    '<thead><tr><th>محصول / وارییشن</th><th style="width:60px"></th></tr></thead>' +
+                    '<tbody></tbody>' +
+                '</table>' +
+                '<button type="button" class="button carno-add-cf-product" data-cf-index="' + idx + '" style="margin-top:8px">+ افزودن محصول</button>';
+
+            document.getElementById('carno-cf-cards').appendChild(card);
+            renumberCfCards();
+        });
 
     })();
     </script>
