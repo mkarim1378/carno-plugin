@@ -112,6 +112,14 @@ function nias_disable_emojis_tinymce($plugins) {
     }
 }
 
+// حذف استایل‌های Elementor در صفحه eps
+add_action('wp_enqueue_scripts', function() {
+    if (is_page('eps')) {
+        wp_dequeue_style('elementor-frontend');
+        wp_dequeue_style('elementor-icons');
+    }
+}, 100);
+
 // حذف jquery-migrate
 add_action('wp_enqueue_scripts', function() {
     wp_deregister_script('jquery-migrate');
