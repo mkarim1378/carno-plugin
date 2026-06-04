@@ -112,26 +112,31 @@ function nias_disable_emojis_tinymce($plugins) {
     }
 }
 
-// حذف همه استایل‌ها و اسکریپت‌ها در صفحه eps (به جز whitelist)
+// حذف همه استایل‌ها و اسکریپت‌ها در صفحه eps (به جز jQuery و Gravity Forms)
 add_action('wp_enqueue_scripts', function() {
     if ( ! is_page('eps') ) return;
 
-    global $wp_styles, $wp_scripts;
+    global $wp_scripts, $wp_styles;
 
-    $keep_styles = [ 'admin-bar' ];
-    foreach ( $wp_styles->queue as $handle ) {
-        if ( ! in_array( $handle, $keep_styles ) ) {
-            wp_dequeue_style( $handle );
-            wp_deregister_style( $handle );
+    $keep_scripts = ['jquery', 'jquery-core', 'jquery-migrate'];
+    $keep_styles  = [];
+
+    foreach ( $wp_scripts->registered as $handle => $script ) {
+        if ( strpos($handle, 'gform') === 0 || strpos($handle, 'gravityforms') === 0 ) {
+            $keep_scripts[] = $handle;
+        }
+    }
+    foreach ( $wp_styles->registered as $handle => $style ) {
+        if ( strpos($handle, 'gform') === 0 || strpos($handle, 'gravityforms') === 0 ) {
+            $keep_styles[] = $handle;
         }
     }
 
-    $keep_scripts = [ 'admin-bar', 'wp-hooks', 'wp-i18n', 'wp-polyfill' ];
     foreach ( $wp_scripts->queue as $handle ) {
-        if ( ! in_array( $handle, $keep_scripts ) ) {
-            wp_dequeue_script( $handle );
-            wp_deregister_script( $handle );
-        }
+        if ( ! in_array($handle, $keep_scripts) ) wp_dequeue_script($handle);
+    }
+    foreach ( $wp_styles->queue as $handle ) {
+        if ( ! in_array($handle, $keep_styles) ) wp_dequeue_style($handle);
     }
 }, PHP_INT_MAX );
 
