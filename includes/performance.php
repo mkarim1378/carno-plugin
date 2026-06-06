@@ -114,7 +114,7 @@ function nias_disable_emojis_tinymce($plugins) {
 
 // حذف همه استایل‌ها و اسکریپت‌ها در صفحه eps (به جز jQuery و Gravity Forms)
 add_action('wp_enqueue_scripts', function() {
-    if ( ! is_page('eps') ) return;
+    if ( ! is_page(['eps', 'eps1']) ) return;
 
     global $wp_scripts, $wp_styles;
 
