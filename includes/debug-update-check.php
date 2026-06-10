@@ -155,6 +155,59 @@ add_shortcode( 'carno_update_debug', function() {
         }
     }
 
+    // 6. لیست هوک‌هایی که می‌تونن ترنزینت‌های آپدیت یا درخواست‌های HTTP رو دستکاری کنن
+    $out .= "\n=== Hooked callbacks on relevant filters ===\n";
+    $hooks_to_check = [
+        'pre_set_site_transient_update_plugins',
+        'site_transient_update_plugins',
+        'pre_set_site_transient_update_core',
+        'site_transient_update_core',
+        'pre_set_site_transient_update_themes',
+        'site_transient_update_themes',
+        'http_request_args',
+        'pre_http_request',
+        'http_request_host_is_external',
+        'auto_update_plugin',
+        'auto_update_core',
+    ];
+
+    global $wp_filter;
+    foreach ( $hooks_to_check as $hook ) {
+        $out .= "--- $hook ---\n";
+        if ( empty( $wp_filter[ $hook ] ) ) {
+            $out .= "  (no callbacks)\n";
+            continue;
+        }
+        foreach ( $wp_filter[ $hook ]->callbacks as $priority => $callbacks ) {
+            foreach ( $callbacks as $cb ) {
+                $function = $cb['function'];
+                $label    = '';
+                $source   = '';
+                try {
+                    if ( is_array( $function ) ) {
+                        $class_name = is_object( $function[0] ) ? get_class( $function[0] ) : $function[0];
+                        $label  = $class_name . '::' . $function[1];
+                        $ref    = new ReflectionMethod( $function[0], $function[1] );
+                    } elseif ( is_string( $function ) && strpos( $function, '::' ) !== false ) {
+                        $label = $function;
+                        $parts = explode( '::', $function );
+                        $ref   = new ReflectionMethod( $parts[0], $parts[1] );
+                    } elseif ( $function instanceof Closure ) {
+                        $label = '{closure}';
+                        $ref   = new ReflectionFunction( $function );
+                    } else {
+                        $label = (string) $function;
+                        $ref   = new ReflectionFunction( $function );
+                    }
+                    $source = $ref->getFileName() . ':' . $ref->getStartLine();
+                } catch ( Throwable $e ) {
+                    $source = '(unresolvable)';
+                }
+                $out .= "  [priority $priority] $label\n      $source\n";
+            }
+        }
+    }
+
     $out .= '</div>';
 
     return $out;
