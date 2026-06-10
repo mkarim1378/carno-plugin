@@ -12,6 +12,12 @@ add_shortcode( 'carno_update_debug', function() {
 
     $out = '<div style="direction:ltr; text-align:left; font-family:monospace; font-size:13px; background:#f5f5f5; border:1px solid #ccc; padding:15px; line-height:1.8; white-space:pre-wrap;">';
 
+    // 0. اطلاعات پایه
+    global $wp_version;
+    $out .= "=== Basic Info ===\n";
+    $out .= 'WP version: ' . $wp_version . "\n";
+    $out .= 'Object cache: ' . ( wp_using_ext_object_cache() ? 'YES (external object cache active)' : 'no' ) . "\n\n";
+
     // 1. وضعیت کرون
     $out .= "=== WP Cron ===\n";
     $out .= 'DISABLE_WP_CRON: ' . ( defined('DISABLE_WP_CRON') ? var_export( DISABLE_WP_CRON, true ) : 'not defined (false)' ) . "\n";
@@ -41,7 +47,18 @@ add_shortcode( 'carno_update_debug', function() {
         $body = wp_remote_retrieve_body( $resp );
         $out .= "HTTP code: $code\n";
         $out .= 'Body length: ' . strlen( $body ) . " bytes\n";
-        $out .= 'Body preview: ' . esc_html( substr( $body, 0, 200 ) ) . "\n";
+
+        $decoded = json_decode( $body, true );
+        if ( ! empty( $decoded['offers'] ) ) {
+            $out .= "Offers returned by API:\n";
+            foreach ( $decoded['offers'] as $offer ) {
+                $out .= '  - response: ' . ( $offer['response'] ?? '?' )
+                      . ' | version: ' . ( $offer['current'] ?? '?' )
+                      . ' | locale: ' . ( $offer['locale'] ?? '?' ) . "\n";
+            }
+        } else {
+            $out .= "No offers in response.\n";
+        }
     }
     $out .= "\n";
 
@@ -58,22 +75,31 @@ add_shortcode( 'carno_update_debug', function() {
     $plugins_transient = get_site_transient( 'update_plugins' );
     $themes_transient  = get_site_transient( 'update_themes' );
 
+    $out .= 'update_core transient: ' . ( $core_transient ? 'set' : 'FALSE (not set)' ) . "\n";
     if ( $core_transient && ! empty( $core_transient->updates ) ) {
-        $out .= "Core updates found:\n";
+        $out .= "Core updates/offers in transient:\n";
         foreach ( $core_transient->updates as $u ) {
-            $out .= '  - ' . ( $u->response ?? '?' ) . ' -> ' . ( $u->version ?? '?' ) . "\n";
+            $out .= '  - ' . ( $u->response ?? '?' ) . ' -> ' . ( $u->version ?? '?' ) . ' (current: ' . ( $u->current ?? '?' ) . ")\n";
         }
+        $out .= 'version_checked: ' . ( $core_transient->version_checked ?? '?' ) . "\n";
     } else {
         $out .= "Core updates: none / transient empty\n";
     }
 
+    $out .= "\n";
+    $out .= 'update_plugins transient: ' . ( $plugins_transient ? 'set' : 'FALSE (not set)' ) . "\n";
+    if ( $plugins_transient ) {
+        $out .= 'plugins checked (count): ' . ( isset( $plugins_transient->checked ) ? count( (array) $plugins_transient->checked ) : 0 ) . "\n";
+        $out .= 'plugins with no_update (count): ' . ( isset( $plugins_transient->no_update ) ? count( (array) $plugins_transient->no_update ) : 0 ) . "\n";
+        $out .= 'last_checked: ' . ( isset( $plugins_transient->last_checked ) ? date( 'Y-m-d H:i:s', $plugins_transient->last_checked ) : '?' ) . "\n";
+    }
     if ( $plugins_transient && ! empty( $plugins_transient->response ) ) {
         $out .= "\nPlugin updates found:\n";
         foreach ( $plugins_transient->response as $file => $info ) {
             $out .= '  - ' . $file . ' -> ' . ( $info->new_version ?? '?' ) . "\n";
         }
     } else {
-        $out .= "\nPlugin updates: none / transient empty\n";
+        $out .= "\nPlugin updates: none\n";
     }
 
     if ( $themes_transient && ! empty( $themes_transient->response ) ) {
