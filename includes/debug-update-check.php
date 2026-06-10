@@ -16,6 +16,7 @@ add_shortcode( 'carno_update_debug', function() {
     global $wp_version;
     $out .= "=== Basic Info ===\n";
     $out .= 'WP version: ' . $wp_version . "\n";
+    $out .= 'Site locale: ' . get_locale() . "\n";
     $out .= 'Object cache: ' . ( wp_using_ext_object_cache() ? 'YES (external object cache active)' : 'no' ) . "\n\n";
 
     // 1. وضعیت کرون
@@ -109,6 +110,49 @@ add_shortcode( 'carno_update_debug', function() {
         }
     } else {
         $out .= "\nTheme updates: none / transient empty\n";
+    }
+
+    // 5. تست مستقیم درخواست چک آپدیت افزونه‌ها (مثل وردپرس)
+    $out .= "\n=== Manual plugin update-check request ===\n";
+    if ( ! function_exists( 'get_plugins' ) ) {
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+    }
+    $all_plugins = get_plugins();
+    $out .= 'Installed plugins (get_plugins count): ' . count( $all_plugins ) . "\n";
+
+    $plugin_info = [];
+    foreach ( $all_plugins as $file => $p ) {
+        $plugin_info[ $file ] = [
+            'Name'    => $p['Name'],
+            'Version' => $p['Version'],
+        ];
+    }
+
+    $payload = [
+        'plugins'      => [ 'plugins' => $plugin_info, 'active' => array_values( get_option( 'active_plugins', [] ) ) ],
+        'translations' => [],
+        'locale'       => [ get_locale() ],
+        'all'          => true,
+    ];
+
+    $manual_resp = wp_remote_post( 'https://api.wordpress.org/plugins/update-check/1.1/', [
+        'timeout' => 15,
+        'body'    => [ 'plugins' => wp_json_encode( $payload['plugins'] ), 'translations' => wp_json_encode( $payload['translations'] ), 'locale' => wp_json_encode( $payload['locale'] ), 'all' => wp_json_encode( true ) ],
+    ] );
+
+    if ( is_wp_error( $manual_resp ) ) {
+        $out .= 'ERROR: ' . $manual_resp->get_error_message() . "\n";
+    } else {
+        $code = wp_remote_retrieve_response_code( $manual_resp );
+        $body = wp_remote_retrieve_body( $manual_resp );
+        $out .= "HTTP code: $code\n";
+        $out .= 'Body length: ' . strlen( $body ) . " bytes\n";
+        $decoded = json_decode( $body, true );
+        $out .= 'plugins in response: ' . ( isset( $decoded['plugins'] ) ? count( $decoded['plugins'] ) : 0 ) . "\n";
+        $out .= 'no_update in response: ' . ( isset( $decoded['no_update'] ) ? count( $decoded['no_update'] ) : 0 ) . "\n";
+        if ( empty( $decoded['plugins'] ) && empty( $decoded['no_update'] ) ) {
+            $out .= 'Raw body preview: ' . esc_html( substr( $body, 0, 500 ) ) . "\n";
+        }
     }
 
     $out .= '</div>';
