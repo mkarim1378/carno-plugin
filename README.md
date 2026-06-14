@@ -3,7 +3,7 @@
 ## اطلاعات کلی افزونه
 
 - **نام افزونه**: Carno Customization Plugin
-- **نسخه**: 2.1.14
+- **نسخه**: 2.2.0
 - **نویسنده**: سپهر علیمحمدی
 - **آدرس**: https://sepehralimohammadi.com/
 - **توضیحات**: افزونه شخصی‌سازی برای وبسایت آکادمی کارنو (آموزشگاه برق خودرو)
@@ -26,7 +26,8 @@ carno-plugin/
     ├── woo-campaign.php      ← کمپین special_buy (لینک‌های اسپات)
     ├── qr-discount.php       ← سیستم تخفیف QR کد / کتاب
     ├── integrations.php      ← Elementor، Gravity Forms، Rank Math، Voorodak
-    └── ui.php                ← فاوآیکون داینامیک، CTA، URL تمیز
+    ├── ui.php                ← فاوآیکون داینامیک، CTA، URL تمیز
+    └── karno-orders.php      ← سفارش‌های فرم خرید مستقیم (فرم #70 + آقای پرداخت)
 ```
 
 ---

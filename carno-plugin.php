@@ -4,7 +4,7 @@
 Plugin Name:  Carno Customization Plugin
 Plugin URI:   https://sepehralimohammadi.com/
 Description:  این افزونه جهت اعمال شخصی سازی های مورد نیاز بر روی وبسایت مهندس سپهر علیمحمدی توسعه داده شده است. لطفا از غیرفعال کردن این افزونه خودداری فرمایید!
-Version:      2.1.14
+Version:      2.2.0
 Author:       سپهر علیمحمدی
 Author URI:   https://sepehralimohammadi.com/
 */
@@ -23,3 +23,4 @@ require_once $carno_includes . 'woo-campaign.php';   // کمپین special_buy (
 require_once $carno_includes . 'qr-discount.php';    // سیستم تخفیف QR کد / کتاب
 require_once $carno_includes . 'integrations.php';   // Elementor، Gravity Forms، Rank Math، Voorodak
 require_once $carno_includes . 'ui.php';             // فاوآیکون داینامیک، اسکریپت‌های UI
+require_once $carno_includes . 'karno-orders.php';   // سفارش‌های فرم خرید مستقیم (فرم #70 + آقای پرداخت)
